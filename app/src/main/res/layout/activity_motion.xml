@@ -1,0 +1,17 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/motion_root" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_title" android:textSize="26sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_intro" android:layout_marginTop="12dp" />
+        <RadioGroup android:id="@+id/motion_sensitivity" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <RadioButton android:id="@+id/motion_sensitive" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_sensitive" />
+            <RadioButton android:id="@+id/motion_robust" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_robust" />
+        </RadioGroup>
+        <Button android:id="@+id/motion_arm" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_arm" android:layout_marginTop="12dp" />
+        <Button android:id="@+id/motion_test" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_test" />
+        <Button android:id="@+id/motion_pause" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_pause" />
+        <Button android:id="@+id/motion_mail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_title" />
+        <TextView android:id="@+id/motion_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:textIsSelectable="true" android:layout_marginTop="12dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_notes" android:layout_marginTop="16dp" />
+    </LinearLayout>
+</ScrollView>

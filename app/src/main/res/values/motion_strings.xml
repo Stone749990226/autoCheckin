@@ -1,0 +1,12 @@
+<resources>
+    <string name="motion_title">防移动监测</string>
+    <string name="motion_sensitive">灵敏：拿起/倾斜或显著移动（推荐）</string>
+    <string name="motion_robust">稳健：仅显著移动，减少误报</string>
+    <string name="motion_intro">开启后有 10 秒放置时间。正式监测触发后暂停 60 秒；自测触发后暂停 15 秒。明显移动或倾斜会通过邮件提醒，不响铃、不点亮屏幕。</string>
+    <string name="motion_arm">开启正式监测（10 秒后布防）</string>
+    <string name="motion_normal">退出自测，恢复正式监测</string>
+    <string name="motion_test">开始自测（10 秒后布防）</string>
+    <string name="motion_test_restart">重新开始自测（跳过当前限频）</string>
+    <string name="motion_pause">暂停监测 / 解除布防</string>
+    <string name="motion_notes">随时点击“开始自测”或“重新开始自测”，清除当前限频并重新倒计时 10 秒，无需等待。自测邮件标注“防移动自测”；测试完请点“退出自测，恢复正式监测”，或暂停全部监测。\n\n正式模式限频 60 秒，自测模式限频 15 秒，到期自动恢复；两种传感器同时触发只提醒一次。\n\n使用低功耗唤醒传感器，不持续采样陀螺仪，不持有 CPU 或屏幕锁。常驻通知用于保持服务，上下班打卡独立运行。\n\n灭屏策略可能延后布防和恢复，自测时建议保持页面可见。重启后恢复正式模式并重新倒计时。细微移动可能漏报，晃动可能误报；无法保证系统杀进程、关机时的监测。自己取手机前请先暂停。</string>
+</resources>
