@@ -1,0 +1,21 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mail_root" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_title" android:textSize="26sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_intro" />
+        <Switch android:id="@+id/mail_enabled" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/mail_enabled" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_sender" android:labelFor="@id/mail_sender" />
+        <EditText android:id="@+id/mail_sender" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textEmailAddress" android:importantForAutofill="no" android:singleLine="true" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_recipient" android:labelFor="@id/mail_recipient" />
+        <EditText android:id="@+id/mail_recipient" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textEmailAddress" android:importantForAutofill="no" android:singleLine="true" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_secret" android:labelFor="@id/mail_secret" />
+        <EditText android:id="@+id/mail_secret" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword" android:hint="@string/mail_secret_hint" android:importantForAutofill="no" android:saveEnabled="false" android:singleLine="true" />
+        <Switch android:id="@+id/mail_battery" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/mail_battery" />
+        <Button android:id="@+id/mail_save" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_save" />
+        <Button android:id="@+id/mail_test" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_test" />
+        <Button android:id="@+id/mail_retry" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_retry" />
+        <Button android:id="@+id/mail_clear" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mail_clear" />
+        <TextView android:id="@+id/mail_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:textIsSelectable="true" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/mail_limitations" />
+    </LinearLayout>
+</ScrollView>

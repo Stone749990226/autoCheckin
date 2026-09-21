@@ -1,0 +1,23 @@
+<resources>
+    <string name="clock_in">上班卡</string>
+    <string name="clock_out">下班卡</string>
+    <string name="clock_in_default">08:30</string>
+    <string name="clock_out_default">18:00</string>
+    <string name="schedule_hint">点击右侧时间修改；可分别启停。两次任务至少间隔 3 分钟。每次结束锁屏，下一时段会再次唤醒。</string>
+    <string name="main_text_1">自动打卡助手</string>
+    <string name="main_text_2">每天打开钉钉，等待极速打卡结果并锁屏。请提前准备好登录、定位与考勤 Wi-Fi。</string>
+    <string name="main_text_3">启用每日任务</string>
+    <string name="main_text_5">测试启动钉钉</string>
+    <string name="main_text_6">测试完整流程（结束后锁屏）</string>
+    <string name="main_text_7">停止本次运行（不锁屏）</string>
+    <string name="main_text_8">查看最近日志</string>
+    <string name="main_text_9">高级识别与点击配置</string>
+    <string name="main_text_10">权限与后台设置</string>
+    <string name="main_text_11">精确闹钟权限</string>
+    <string name="main_text_12">通知权限</string>
+    <string name="main_text_13">电池优化豁免</string>
+    <string name="main_text_14">无障碍服务</string>
+    <string name="main_text_15">设备管理员（仅锁屏）</string>
+    <string name="main_text_16">应用详情 / 后台管理</string>
+    <string name="main_text_17">ColorOS 12.1：在应用管理 / 电池设置中允许本应用自启动、关联启动和后台活动，并在最近任务中锁定。不同版本的选项名称可能不同。强行停止后需重新打开本应用。\n\n仅识别到提示才记为成功；未确认不代表钉钉没有打卡。首次请用提前几分钟的闹钟进行灭屏测试。</string>
+</resources>
