@@ -99,8 +99,13 @@ class CheckinService : Service() {
             setReferenceCounted(false)
             acquire(150_000L)
         }
-        // The Activity wakes the display; this bounded lock keeps DingTalk visible while observing.
-        screenLock = power.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "$packageName:screen").apply {
+        // WakeActivity remains the foreground-path fallback. On this Honor Android 10 device,
+        // the dim screen lock wakes reliably only while charging, so request a bounded bright
+        // screen lock when running on battery. Both locks release on every terminal path.
+        screenLock = power.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "$packageName:screen",
+        ).apply {
             setReferenceCounted(false)
             acquire(150_000L)
         }

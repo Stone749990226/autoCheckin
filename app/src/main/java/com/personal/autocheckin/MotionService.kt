@@ -38,6 +38,10 @@ class MotionService : Service(), SensorEventListener {
         // ColorOS exposes this sensor through enumeration; its numeric constant is not public SDK.
         fun tilt(manager: SensorManager): Sensor? = manager.getSensorList(Sensor.TYPE_ALL)
             .firstOrNull { it.isWakeUpSensor && it.stringType == "android.sensor.tilt_detector" }
+        // Deliberately the non-wakeup accelerometer: a wakeup sensor would hold a CPU WakeLock for the whole arm window.
+        fun accelerometer(manager: SensorManager): Sensor? = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        /** 约 1 Hz，仅用于兜底判断大幅移动，不做连续采样。 */
+        const val ACCELERATION_PERIOD_US = 1_000_000
 
         fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -59,6 +63,8 @@ class MotionService : Service(), SensorEventListener {
     private lateinit var sensors: SensorManager
     private var significantRegistered = false
     private var tiltRegistered = false
+    private var accelerationRegistered = false
+    private val accelerationDetector = AccelerationMotionDetector()
     private var registeredAt = 0L
     private var started = false
     var sensorStatus = "尚未注册传感器"
@@ -129,15 +135,42 @@ class MotionService : Service(), SensorEventListener {
             if (settings.sensitive && !tiltRegistered) tilt(sensors)?.let {
                 tiltRegistered = sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0, handler)
             }
+            if (settings.acceleration && !accelerationRegistered) accelerometer(sensors)?.let { sensor ->
+                // 基线必须来自本次布防后的第一次采样，所以每次（重新）注册都清空检测器状态。
+                accelerationDetector.reset()
+                accelerationRegistered = sensors.registerListener(this, sensor, ACCELERATION_PERIOD_US, 0, handler)
+            }
         } catch (e: Exception) {
             fail("传感器注册失败：${e.javaClass.simpleName}")
             return
         }
         if (!isMonitoring) { fail("没有可注册的低功耗唤醒传感器"); return }
         settings.problem = ""
-        sensorStatus = "显著运动：${if (significantRegistered) "已注册" else "不可用"}；倾斜：${if (tiltRegistered) "已注册" else if (!settings.sensitive) "稳健档已关闭" else "不可用"}"
+        sensorStatus = statusText()
         if (!wasRegistered) RunLog.write(this, null, "MOTION_ARMED", "${settings.modeLabel}：$sensorStatus")
-        updateNotification("已布防 · $sensorStatus")
+        updateNotification("已布防 · $sensorStatus\n${hardwareText()}")
+    }
+
+    /** 本机实际存在的传感器名称；加速度计为可选兜底，与开关状态分开显示。 */
+    private fun hardwareText(): String =
+        "硬件 显著运动：${significant(sensors)?.name ?: "无"}；倾斜：${tilt(sensors)?.name ?: "无"}；" +
+            "加速度计：${accelerometer(sensors)?.name ?: "无"}"
+
+    /** 开关状态与本次实际注册状态。 */
+    private fun statusText(): String {
+        val tiltState = when {
+            tiltRegistered -> "已注册"
+            !settings.sensitive -> "稳健档已关闭"
+            else -> "不可用"
+        }
+        val accelerationState = when {
+            !settings.acceleration -> "开关关闭"
+            accelerationRegistered -> "已注册"
+            accelerometer(sensors) == null -> "本机不支持"
+            else -> "未注册"
+        }
+        return "显著运动：${if (significantRegistered) "已注册" else "不可用"}；倾斜：$tiltState；" +
+            "加速度计（兜底）：$accelerationState"
     }
 
     private fun unregisterSensors() {
@@ -145,6 +178,8 @@ class MotionService : Service(), SensorEventListener {
         sensors.unregisterListener(this)
         significantRegistered = false
         tiltRegistered = false
+        accelerationRegistered = false
+        accelerationDetector.reset()
         sensorStatus = "传感器已暂停"
     }
 
@@ -169,7 +204,15 @@ class MotionService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.stringType == "android.sensor.tilt_detector") movement("倾斜/拿起（可能被翻转）", event.timestamp)
+        if (event.sensor.stringType == "android.sensor.tilt_detector") {
+            movement("倾斜/拿起（可能被翻转）", event.timestamp)
+        } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            if (!settings.acceleration) return
+            // 检测器只在开关开启时被注册，未注册的残留事件在布防/限频期同样会被 movement() 丢弃。
+            val detected = accelerationDetector.observe(event.values[0], event.values[1], event.values[2]) ?: return
+            val source = if (detected == AccelerationMotion.ORIENTATION) "加速度计姿态变化" else "加速度计明显加速"
+            movement(source, event.timestamp)
+        }
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { }
 

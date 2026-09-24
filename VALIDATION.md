@@ -37,10 +37,22 @@
 - 真实成功提示识别及整夜待机电耗仍未验证。
 - 省电调整后的完整手动下班测试：18:04:34 启动，订阅从空恢复为四种钉钉事件，使用 `PARTIAL_WAKE_LOCK` 和 `SCREEN_DIM_WAKE_LOCK`；18:05:34 重试，18:06:34 未确认并自动锁屏。结束后系统报告 `Asleep`，无本应用 WakeLock、无打卡前台服务，无障碍绑定保留但事件订阅为空；两个正式闹钟仍在。
 
+## 1.5 低频加速度兜底验证（2026-09-23，荣耀 X10 / Android 10 / API 29）
+
+设备 `JANVB20519017353`（TEL-AN00a）。在 Android 10 兼容版 1.4 上**覆盖安装**，未卸载、未清除数据：`com.personal.autocheckin` 升级为 versionCode 6 / versionName 1.5，用户原有时段、邮件授权与运动配置保持不变。加速计不需要任何新权限，`AndroidManifest.xml` 未新增权限。
+
+- **默认关闭**：升级后 `shared_prefs/motion_settings.xml` 无 `acceleration` 键（读取默认 false），页面复选框未勾选；该状态下 `dumpsys sensorservice` 中本应用只有 `significant Motion 0x0000000f`，**没有** `0x00000000`（加速度计），即关闭时不注册加速度计。
+- **开启后已注册**：勾选后日志 `10:59:11.323 MOTION_ARMED … 加速度计（兜底）：已注册`；`dumpsys sensorservice` 显示本应用有两条 active 连接 `accelerometer-lsm6ds3-c 0x00000000` 与 `significant Motion 0x0000000f`，均为 `WakeLockRefCount 0`（未持有 CPU WakeLock）。注册请求为 `samplingPeriodUs=1000000`，但 HAL 实际给出 `samplingPeriod=200000us`（约 5 Hz），详见 README 限制说明。
+- **真机触发**：用户在自测模式下三次拿起手机，分别于 `10:56:48.278`、`10:57:09.333`、`10:57:42.198` 记录 `MOTION_DETECTED`，来源均为 `加速度计明显加速`，并带电量；触发后复用现有 15 秒限频与邮件入队。这是真实硬件事件，不是注入的假数据。
+- **关闭后注销**：`10:59:16.514 MOTION_ACCELERATION 低频加速度检测：已关闭`，紧接着 `10:59:16.552 MOTION_ARMED … 加速度计（兜底）：开关关闭`；`dumpsys sensorservice` 的注册历史中本应用在 `10:59:16` 出现 `- 0x00000000`，当前连接只剩 `significant Motion 0x0000000f`。即关闭后 sensorservice 不再显示本应用注册加速度计。
+- 验证结束后已把监测恢复为用户操作前的**暂停**状态（`enabled=false`、`testMode=false`），未留下布防中的监测。验证过程未触发钉钉打卡，未改动用户的上下班时间与闹钟。
+
+限制：未做整夜耗电对比；未在深度休眠（Doze）下验证加速度计是否仍有采样；三次真实触发均为 `加速度计明显加速`，`加速度计姿态变化`（30° 连续两次）分支仅由单元测试覆盖，尚无真机日志证据。
+
 ## 当前自动检查结果
 
-- `scripts/build.ps1`：通过，生成 `app/build/outputs/apk/debug/app-debug.apk`。
-- `:app:testDebugUnitTest`：1.4 版 25 项测试通过，0 失败、0 错误。包含原 11 项调度/识别、7 项邮件及 7 项运动监测测试，新增覆盖自测重启绕过限频、退出自测、正式 60 秒/自测 15 秒限频和 10 秒布防。
+- `:app:testDebugUnitTest`：1.5 版 30 项测试通过，0 失败、0 错误。包含原 11 项调度/识别、7 项邮件及 12 项运动监测测试；运动监测新增 5 项加速度检测器用例（静止噪声不误报、连续两次姿态变化才判定、回到基线取消连续计数、单次明显加速即判定、reset 后必须重建基线）。
+- `:app:lintDebug`：通过，报告 `No issues found.`。`:app:assembleDebug`：通过，生成 1.5 debug APK。
 - `:app:lintDebug`：通过，报告 `No issues found.`。
 - 构建工具的个人用途电池策略提醒、同步持久化提醒和单语言动态文案提醒，在对应代码位置说明理由并局部抑制；未全局关闭 Lint。
 - Gradle Wrapper 已固定官方 Gradle 8.7 分发包 SHA-256。

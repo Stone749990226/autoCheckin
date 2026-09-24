@@ -7,6 +7,8 @@
             <RadioButton android:id="@+id/motion_sensitive" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_sensitive" />
             <RadioButton android:id="@+id/motion_robust" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_robust" />
         </RadioGroup>
+        <CheckBox android:id="@+id/motion_acceleration" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_acceleration" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_acceleration_help" android:textSize="13sp" />
         <Button android:id="@+id/motion_arm" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_arm" android:layout_marginTop="12dp" />
         <Button android:id="@+id/motion_test" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_test" />
         <Button android:id="@+id/motion_pause" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/motion_pause" />

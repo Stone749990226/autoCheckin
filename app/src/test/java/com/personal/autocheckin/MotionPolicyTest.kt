@@ -4,6 +4,47 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MotionPolicyTest {
+    @Test fun accelerationDetectorIgnoresStationaryNoise() {
+        val detector = AccelerationMotionDetector()
+
+        assertNull(detector.observe(0f, 0f, 9.81f))
+        assertNull(detector.observe(0.2f, -0.1f, 9.75f))
+        assertNull(detector.observe(-0.2f, 0.1f, 9.9f))
+    }
+
+    @Test fun accelerationDetectorRequiresTwoLargeOrientationSamples() {
+        val detector = AccelerationMotionDetector()
+        detector.observe(0f, 0f, 9.81f)
+
+        assertNull(detector.observe(6.94f, 0f, 6.94f))
+        assertEquals(AccelerationMotion.ORIENTATION, detector.observe(6.94f, 0f, 6.94f))
+    }
+
+    @Test fun accelerationDetectorCancelsOrientationStreakWhenPhoneReturnsToBaseline() {
+        val detector = AccelerationMotionDetector()
+        detector.observe(0f, 0f, 9.81f)
+
+        assertNull(detector.observe(6.94f, 0f, 6.94f))
+        assertNull(detector.observe(0f, 0f, 9.81f))
+        assertNull(detector.observe(6.94f, 0f, 6.94f))
+    }
+
+    @Test fun accelerationDetectorAcceptsOneLargeAccelerationPeak() {
+        val detector = AccelerationMotionDetector()
+        detector.observe(0f, 0f, 9.81f)
+
+        assertEquals(AccelerationMotion.IMPACT, detector.observe(0f, 0f, 14.5f))
+    }
+
+    @Test fun accelerationDetectorResetRequiresANewBaseline() {
+        val detector = AccelerationMotionDetector()
+        detector.observe(0f, 0f, 9.81f)
+        detector.reset()
+
+        assertNull(detector.observe(6.94f, 0f, 6.94f))
+        assertNull(detector.observe(6.94f, 0f, 6.94f))
+    }
+
     @Test fun ignoresMovementWhileDisabledAndDuringPlacement() {
         assertEquals(MotionPhase.DISABLED, MotionPolicy.phase(false, 100_000, 60_000, 0))
         assertEquals(MotionPhase.ARMING, MotionPolicy.phase(true, 59_999, 60_000, 0))

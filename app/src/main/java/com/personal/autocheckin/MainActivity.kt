@@ -15,7 +15,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.View
-import android.view.WindowInsets
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -47,11 +46,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         settings = SettingsStore(this)
         setContentView(R.layout.activity_main)
-        findViewById<View>(R.id.root).setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
+        WindowCompat.applyInsets(findViewById<View>(R.id.root))
         findViewById<Switch>(R.id.enabled).setOnCheckedChangeListener { _, enabled ->
             if (!updating) {
                 if (enabled) {
@@ -105,7 +100,11 @@ class MainActivity : Activity() {
         button(R.id.mail_settings) { startActivity(Intent(this, MailActivity::class.java)) }
         button(R.id.motion_settings) { startActivity(Intent(this, MotionActivity::class.java)) }
         button(R.id.advanced) { showAdvanced() }
-        button(R.id.exact) { openSettings(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri())) }
+        button(R.id.exact) {
+            if (Build.VERSION.SDK_INT >= 31) {
+                openSettings(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri()))
+            } else toast("当前系统无需单独授权精确闹钟")
+        }
         button(R.id.notification) {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
                 !getPreferences(MODE_PRIVATE).getBoolean("notificationRequested", false)) {
@@ -145,17 +144,15 @@ class MainActivity : Activity() {
     }
 
     private fun testFull(slot: PunchSlot) {
-        val missing = Permissions.missing(this, requireExact = false)
+        val missing = Permissions.missing(this, requireExact = true)
         if (missing.isNotEmpty()) showMessage("请先完成设置", missing.joinToString("\n"))
         else AlertDialog.Builder(this).setTitle("测试${slot.label}")
-            .setMessage("将立即打开钉钉，可能触发真实打卡。最多等待两次、每次 60 秒，结束后自动锁屏。时段标签不改变钉钉自身的考勤规则。")
-            .setNegativeButton("取消", null).setPositiveButton("开始测试") { _, _ ->
-                try {
-                    startForegroundService(Intent(this, CheckinService::class.java)
-                        .putExtra("source", "manual").putExtra("slot", slot.key))
-                } catch (e: Exception) {
-                    RunLog.write(this, null, "START_ERROR", "${slot.label}：${e.javaClass.simpleName}")
-                    showMessage("无法启动", "请查看日志及后台运行设置。")
+            .setMessage("点击开始后等待 5 秒，请在倒计时内手动灭屏。5 秒后系统闹钟会触发完整流程：自动亮屏、打开钉钉、最多等待两次（每次 60 秒），结束后自动锁屏。可能触发真实打卡；时段标签不改变钉钉自身的考勤规则。")
+            .setNegativeButton("取消", null).setPositiveButton("开始 5 秒倒计时") { _, _ ->
+                if (AlarmScheduler.scheduleFullTest(this, slot)) {
+                    toast("5 秒后开始，请现在手动灭屏")
+                } else {
+                    showMessage("无法安排测试", "请检查精确闹钟权限后重试。")
                 }
             }.show()
     }
@@ -265,8 +262,9 @@ class MainActivity : Activity() {
         val description = input("目标 contentDescription", saved.description)
         val resourceId = input("完整 resource-id（例如 包名:id/控件名）", saved.resourceId)
         val coordinate = CheckBox(this).apply { this.text = "允许坐标兜底"; isChecked = saved.coordinateEnabled; layout.addView(this) }
-        val bounds = windowManager.maximumWindowMetrics.bounds
-        val rotation = display?.rotation ?: 0
+        val bounds = WindowCompat.maximumBounds(windowManager)
+        @Suppress("DEPRECATION")
+        val rotation = windowManager.defaultDisplay.rotation
         label("坐标单位为屏幕像素，原点在左上角（包含状态栏）。保存后绑定当前屏幕 ${bounds.width()} × ${bounds.height()}，旋转值 $rotation。可用开发者选项“指针位置”读取坐标。")
         val x = input("X", saved.x.toString(), number = true)
         val y = input("Y", saved.y.toString(), number = true)

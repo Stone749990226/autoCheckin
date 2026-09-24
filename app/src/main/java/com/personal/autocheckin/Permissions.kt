@@ -14,7 +14,8 @@ import android.os.PowerManager
 object Permissions {
     const val DINGTALK = "com.alibaba.android.rimet"
     fun admin(context: Context) = ComponentName(context, CheckinAdminReceiver::class.java)
-    fun exact(context: Context) = context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+    fun exact(context: Context) = Build.VERSION.SDK_INT < 31 ||
+        context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     fun notifications(context: Context): Boolean {
         val manager = context.getSystemService(NotificationManager::class.java)
         return (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&

@@ -21,6 +21,10 @@ class MotionSettings(private val context: Context) {
     var sensitive: Boolean
         get() = prefs.getBoolean("sensitive", true)
         set(value) { prefs.edit().putBoolean("sensitive", value).commit() }
+    /** 可选的低频加速度兜底，默认关闭；关闭时绝不注册加速度计。与灵敏/稳健档相互独立。 */
+    var acceleration: Boolean
+        get() = prefs.getBoolean("acceleration", false)
+        set(value) { prefs.edit().putBoolean("acceleration", value).commit() }
     val modeLabel: String get() = if (testMode) "自测" else "正式监测"
     val cooldownMs: Long get() = MotionPolicy.cooldownMs(testMode)
     val armAt: Long get() = prefs.getLong("armAt", 0)

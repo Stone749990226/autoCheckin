@@ -8,7 +8,6 @@ import android.content.IntentFilter
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -32,11 +31,8 @@ class MailActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_mail)
-        findViewById<android.view.View>(R.id.mail_root).setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        WindowCompat.applyInsets(findViewById<android.view.View>(R.id.mail_root), includeIme = true)
         settings = MailSettings(this)
         findViewById<EditText>(R.id.mail_sender).setText(settings.sender)
         findViewById<EditText>(R.id.mail_recipient).setText(settings.recipient)
