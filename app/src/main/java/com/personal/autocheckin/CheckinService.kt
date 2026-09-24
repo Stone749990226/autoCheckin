@@ -99,8 +99,16 @@ class CheckinService : Service() {
             setReferenceCounted(false)
             acquire(150_000L)
         }
-        // The Activity wakes the display; this bounded lock keeps DingTalk visible while observing.
-        screenLock = power.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "$packageName:screen").apply {
+        // ACQUIRE_CAUSES_WAKEUP turns the display on at acquire time; Activity#setTurnScreenOn is
+        // ignored by some ROMs (MIUI/HyperOS) when starting from the background, so this is the
+        // reliable wake path. SCREEN_DIM keeps it dim while observing; ON_AFTER_RELEASE avoids an
+        // immediate off if the admin lock below is unavailable.
+        screenLock = power.newWakeLock(
+            PowerManager.SCREEN_DIM_WAKE_LOCK or
+                PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                PowerManager.ON_AFTER_RELEASE,
+            "$packageName:screen",
+        ).apply {
             setReferenceCounted(false)
             acquire(150_000L)
         }
