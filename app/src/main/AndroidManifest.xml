@@ -15,6 +15,7 @@
     <application
         android:name=".CheckinApp"
         android:allowBackup="false"
+        android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="自动打卡助手"
         android:icon="@drawable/ic_checkin"

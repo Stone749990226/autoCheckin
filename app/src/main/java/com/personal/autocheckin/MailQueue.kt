@@ -4,6 +4,7 @@ import android.app.job.JobInfo
 import android.app.job.JobScheduler
 import android.content.ComponentName
 import android.content.Context
+import android.os.BatteryManager
 import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,7 +50,10 @@ object MailQueue {
                 return false
             }
             val timestamp = ZonedDateTime.now().toString()
-            val body = "自动打卡助手\n时间：$timestamp\n$detail\n\n设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
+            val battery = context.getSystemService(BatteryManager::class.java)
+                .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            val batteryText = if (battery in 0..100) "$battery%" else "未知"
+            val body = "自动打卡助手\n时间：$timestamp\n电量：$batteryText\n$detail\n\n设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                 "提示：识别成功仅表示读取到成功提示；未确认不等于实际考勤失败。请以钉钉考勤记录为准。"
             write(context, existing + QueuedMail(eventId, "[自动打卡] $subject", body, System.currentTimeMillis()))
             settings.lastStatus = "$timestamp 已加入待发队列：$subject"

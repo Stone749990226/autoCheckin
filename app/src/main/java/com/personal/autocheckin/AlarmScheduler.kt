@@ -8,12 +8,33 @@ import android.content.Intent
 import java.time.ZonedDateTime
 
 object AlarmScheduler {
+    const val FULL_TEST_DELAY_MS = 5_000L
+    private const val TEST_REQUEST_CODE_OFFSET = 1_000
+    private const val TEST_ACTION = "com.personal.autocheckin.RUN_TEST"
+
     private fun pending(context: Context, slot: PunchSlot, at: Long = 0) = PendingIntent.getBroadcast(
         context, slot.requestCode, Intent(context, AlarmReceiver::class.java)
             .setAction("com.personal.autocheckin.RUN.${slot.key}")
             .putExtra("slot", slot.key).putExtra("scheduledAt", at),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+
+    private fun testPending(context: Context, slot: PunchSlot) = PendingIntent.getBroadcast(
+        context, slot.requestCode + TEST_REQUEST_CODE_OFFSET,
+        Intent(context, AlarmReceiver::class.java).setAction(TEST_ACTION).putExtra("slot", slot.key),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    fun scheduleFullTest(context: Context, slot: PunchSlot): Boolean = try {
+        val at = System.currentTimeMillis() + FULL_TEST_DELAY_MS
+        context.getSystemService(AlarmManager::class.java)
+            .setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, testPending(context, slot))
+        RunLog.write(context, null, "TEST_SCHEDULED", "${slot.label}：5 秒后开始亮屏、启动钉钉、等待结果并锁屏")
+        true
+    } catch (e: SecurityException) {
+        RunLog.write(context, null, "START_ERROR", "${slot.label}完整流程测试安排失败：${e.javaClass.simpleName}")
+        false
+    }
 
     fun cancelLegacy(context: Context) {
         val old = PendingIntent.getBroadcast(context, 100,
@@ -72,8 +93,18 @@ object AlarmScheduler {
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val settings = SettingsStore(context)
         val slot = PunchSlot.fromKey(intent.getStringExtra("slot")) ?: return
+        if (intent.action == "com.personal.autocheckin.RUN_TEST") {
+            RunLog.write(context, null, "TEST_ALARM", "${slot.label}：5 秒倒计时结束，开始完整亮屏流程")
+            try {
+                context.startForegroundService(Intent(context, CheckinService::class.java)
+                    .putExtra("source", "manual_delayed").putExtra("slot", slot.key))
+            } catch (e: Exception) {
+                RunLog.write(context, null, "START_ERROR", "${slot.label}完整流程测试启动失败：${e.javaClass.simpleName}")
+            }
+            return
+        }
+        val settings = SettingsStore(context)
         val at = intent.getLongExtra("scheduledAt", 0)
         if (!settings.enabled || !settings.schedule(slot).enabled || at == 0L || at != settings.scheduledAt(slot)) return
         // Advance only this slot. Morning completion must not consume the evening alarm.

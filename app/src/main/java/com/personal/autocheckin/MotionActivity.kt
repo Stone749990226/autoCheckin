@@ -11,8 +11,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.WindowInsets
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.RadioGroup
 
@@ -26,11 +26,7 @@ class MotionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_motion)
-        findViewById<android.view.View>(R.id.motion_root).setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
+        WindowCompat.applyInsets(findViewById<android.view.View>(R.id.motion_root))
         settings = MotionSettings(this)
         MotionService.createChannel(this)
         findViewById<RadioGroup>(R.id.motion_sensitivity).apply {
@@ -50,6 +46,24 @@ class MotionActivity : Activity() {
                     RunLog.write(this@MotionActivity, null, "MOTION_SENSITIVITY", if (sensitive) "灵敏：两种硬件事件任一触发" else "稳健：仅显著运动")
                     render()
                 }
+            }
+        }
+        findViewById<CheckBox>(R.id.motion_acceleration).apply {
+            isChecked = settings.acceleration
+            setOnCheckedChangeListener { button, checked ->
+                if (checked && MotionService.accelerometer(getSystemService(SensorManager::class.java)) == null) {
+                    button.isChecked = false
+                    AlertDialog.Builder(this@MotionActivity).setMessage("本机没有可用的加速度计，不能开启低频加速度检测")
+                        .setPositiveButton("知道了", null).show()
+                    return@setOnCheckedChangeListener
+                }
+                settings.acceleration = checked
+                if (settings.enabled) {
+                    try { startForegroundService(Intent(this@MotionActivity, MotionService::class.java).setAction(MotionService.RECONFIGURE)) }
+                    catch (e: Exception) { settings.problem = "切换加速度检测失败：${e.javaClass.simpleName}" }
+                }
+                RunLog.write(this@MotionActivity, null, "MOTION_ACCELERATION", if (checked) "低频加速度检测：已开启" else "低频加速度检测：已关闭")
+                render()
             }
         }
         findViewById<Button>(R.id.motion_arm).setOnClickListener { startMode(false) }
@@ -105,10 +119,11 @@ class MotionActivity : Activity() {
             else -> "正在等待系统恢复传感器，请以“已布防”为准"
         }
         val manager = getSystemService(SensorManager::class.java)
-        val hardware = "显著运动：${MotionService.significant(manager)?.name ?: "不支持"}\n倾斜：${MotionService.tilt(manager)?.name ?: "不支持"}"
+        val hardware = "显著运动：${MotionService.significant(manager)?.name ?: "不支持"}\n倾斜：${MotionService.tilt(manager)?.name ?: "不支持"}\n加速度计：${MotionService.accelerometer(manager)?.name ?: "不支持"}"
+        val accelerationSwitch = if (settings.acceleration) "低频加速度检测：已开启（可选兜底）" else "低频加速度检测：已关闭（默认，不注册加速度计）"
         val mail = MailSettings(this)
         val mailState = if (mail.enabled && mail.hasSecret && !mail.blocked) "邮件通知可用（发送状态见邮件设置）" else "邮件不可用或暂停，请检查邮件设置"
-        val text = "模式：${settings.modeLabel}（限频 ${settings.cooldownMs / 1000} 秒）\n$state\n\n$hardware\n${service?.sensorStatus ?: "未注册传感器"}\n$mailState\n${settings.problem}\n\n最近移动：\n${settings.lastEvent}"
+        val text = "模式：${settings.modeLabel}（限频 ${settings.cooldownMs / 1000} 秒）\n$state\n\n$accelerationSwitch\n$hardware\n${service?.sensorStatus ?: "未注册传感器"}\n$mailState\n${settings.problem}\n\n最近移动：\n${settings.lastEvent}"
         findViewById<TextView>(R.id.motion_status).let { if (it.text.toString() != text) it.text = text }
         findViewById<Button>(R.id.motion_arm).apply {
             isEnabled = !settings.enabled || settings.testMode

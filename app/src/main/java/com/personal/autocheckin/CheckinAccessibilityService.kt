@@ -98,7 +98,7 @@ class CheckinAccessibilityService : AccessibilityService() {
             val foreground = currentRoot?.packageName?.toString() == Permissions.DINGTALK
             recycle(currentRoot)
             val manager = getSystemService(WindowManager::class.java)
-            val bounds = manager.maximumWindowMetrics.bounds
+            val bounds = WindowCompat.maximumBounds(manager)
             @Suppress("DEPRECATION")
             val rotation = manager.defaultDisplay.rotation
             if (!foreground || !config.coordinatesValidFor(bounds.width(), bounds.height(), rotation)) {
