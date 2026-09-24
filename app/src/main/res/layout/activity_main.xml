@@ -41,6 +41,7 @@
         <Button android:id="@+id/exact" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_11" />
         <Button android:id="@+id/notification" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_12" />
         <Button android:id="@+id/battery" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_13" />
+        <Button android:id="@+id/vendor_power" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_18" />
         <Button android:id="@+id/accessibility" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_14" />
         <Button android:id="@+id/admin" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_15" />
         <Button android:id="@+id/app_settings" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_text_16" />
