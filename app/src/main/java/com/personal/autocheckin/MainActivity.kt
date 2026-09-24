@@ -52,6 +52,8 @@ class MainActivity : Activity() {
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
+        findViewById<TextView>(R.id.background_hint).text =
+            getString(Vendor.backgroundHintRes()) + "\n\n" + getString(R.string.main_text_17)
         findViewById<Switch>(R.id.enabled).setOnCheckedChangeListener { _, enabled ->
             if (!updating) {
                 if (enabled) {

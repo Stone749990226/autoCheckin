@@ -79,3 +79,19 @@
 - [ ] 整夜灭屏待机后的 08:30 自动执行。
 
 首次实机调试可能需要根据钉钉实际可访问节点调整关键词或点击配置；如果提示仅是不可访问的绘制内容，首版将记录未确认，不会伪造成功。
+
+## Redmi K50 适配（待实机验证）
+
+为 Redmi K50（MIUI/HyperOS）做的代码适配：
+
+- 主界面底部后台设置指引按厂商动态显示：小米机型显示 MIUI/HyperOS 的自启动、省电策略无限制、后台弹出界面、最近任务锁定等说明。
+- 倾斜唤醒传感器适配：除 ColorOS 的 `android.sensor.tilt_detector` 外，回退匹配小米机型常见的 `android.sensor.pick_up_gesture`；显著运动传感器不受影响。
+- 闹钟类型说明泛化：`setAlarmClock()` 对 ColorOS 与 MIUI 均保持逐日独立精确，不依赖被厂商合并的 `setExactAndAllowWhileIdle`。
+
+尚未在 Redmi K50 实机验证，需确认：
+
+- [ ] 用 `adb shell dumpsys sensorservice` 确认倾斜唤醒传感器的实际 stringType 是否在适配范围内。
+- [ ] 开启自启动、省电策略无限制、后台弹出界面后，灭屏闹钟能弹出唤醒界面并打开钉钉。
+- [ ] `requestDismissKeyguard` 在 MIUI/HyperOS 上能解除无密码锁屏。
+- [ ] 真实成功提示可被无障碍读取。
+

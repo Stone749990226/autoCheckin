@@ -35,9 +35,14 @@ class MotionService : Service(), SensorEventListener {
             private set
 
         fun significant(manager: SensorManager): Sensor? = manager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION, true)
-        // ColorOS exposes this sensor through enumeration; its numeric constant is not public SDK.
-        fun tilt(manager: SensorManager): Sensor? = manager.getSensorList(Sensor.TYPE_ALL)
-            .firstOrNull { it.isWakeUpSensor && it.stringType == "android.sensor.tilt_detector" }
+        // The low-power "picked up / flipped" wake-up sensor's string type is not in the public
+        // SDK and differs by ROM: ColorOS enumerates android.sensor.tilt_detector, MIUI/HyperOS may
+        // expose android.sensor.pick_up_gesture. Prefer tilt_detector, fall back to pick_up_gesture.
+        private val TILT_STRING_TYPES = listOf("android.sensor.tilt_detector", "android.sensor.pick_up_gesture")
+        fun tilt(manager: SensorManager): Sensor? {
+            val wakeup = manager.getSensorList(Sensor.TYPE_ALL).filter { it.isWakeUpSensor }
+            return TILT_STRING_TYPES.firstNotNullOfOrNull { type -> wakeup.firstOrNull { it.stringType == type } }
+        }
 
         fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -169,7 +174,7 @@ class MotionService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.stringType == "android.sensor.tilt_detector") movement("倾斜/拿起（可能被翻转）", event.timestamp)
+        if (event.sensor.stringType in TILT_STRING_TYPES) movement("倾斜/拿起（可能被翻转）", event.timestamp)
     }
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { }
 

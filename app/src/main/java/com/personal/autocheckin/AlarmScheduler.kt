@@ -56,7 +56,7 @@ object AlarmScheduler {
         return try {
             val showTask = PendingIntent.getActivity(context, 101, Intent(context, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            // ColorOS batches setExactAndAllowWhileIdle. Each alarm clock stays independently exact.
+            // ColorOS / MIUI batch setExactAndAllowWhileIdle. Each alarm clock stays independently exact.
             context.getSystemService(AlarmManager::class.java)
                 .setAlarmClock(AlarmManager.AlarmClockInfo(at, showTask), pending(context, slot, at))
             settings.setScheduledAt(slot, at)

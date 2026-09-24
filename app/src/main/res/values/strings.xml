@@ -19,5 +19,8 @@
     <string name="main_text_14">无障碍服务</string>
     <string name="main_text_15">设备管理员（仅锁屏）</string>
     <string name="main_text_16">应用详情 / 后台管理</string>
-    <string name="main_text_17">ColorOS 12.1：在应用管理 / 电池设置中允许本应用自启动、关联启动和后台活动，并在最近任务中锁定。不同版本的选项名称可能不同。强行停止后需重新打开本应用。\n\n仅识别到提示才记为成功；未确认不代表钉钉没有打卡。首次请用提前几分钟的闹钟进行灭屏测试。</string>
+    <string name="hint_oppo">ColorOS：在 设置 → 应用管理 → 自动打卡助手 允许自启动、关联启动；在 设置 → 电池 → 应用耗电管理 允许后台活动（不限制耗电）；在最近任务中锁定本应用和钉钉。</string>
+    <string name="hint_xiaomi">MIUI/HyperOS：在 设置 → 应用管理 → 自动打卡助手 开启自启动；省电策略设为无限制；开启后台弹出界面（否则灭屏闹钟后无法弹出唤醒界面）；在最近任务中锁定本应用和钉钉。</string>
+    <string name="hint_generic">请在系统设置中允许本应用自启动、后台运行和后台弹出界面，并在最近任务中锁定本应用和钉钉。</string>
+    <string name="main_text_17">不同版本的系统选项名称可能不同。强行停止本应用后，需手动重新打开以恢复闹钟调度。\n\n仅识别到提示才记为成功；未确认不代表钉钉没有打卡。首次请用提前几分钟的闹钟进行灭屏测试。</string>
 </resources>
