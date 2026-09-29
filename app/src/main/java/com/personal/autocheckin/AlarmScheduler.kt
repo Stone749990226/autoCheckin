@@ -27,8 +27,12 @@ object AlarmScheduler {
 
     fun scheduleFullTest(context: Context, slot: PunchSlot): Boolean = try {
         val at = System.currentTimeMillis() + FULL_TEST_DELAY_MS
+        val open = PendingIntent.getActivity(context, 102 + slot.requestCode,
+            Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        // Use the same user-visible alarm-clock path as production. Honor delays an
+        // ordinary exact-while-idle alarm until the user manually turns the screen on.
         context.getSystemService(AlarmManager::class.java)
-            .setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, testPending(context, slot))
+            .setAlarmClock(AlarmManager.AlarmClockInfo(at, open), testPending(context, slot))
         RunLog.write(context, null, "TEST_SCHEDULED", "${slot.label}：5 秒后开始亮屏、启动钉钉、等待结果并锁屏")
         true
     } catch (e: SecurityException) {

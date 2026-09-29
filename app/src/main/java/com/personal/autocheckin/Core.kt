@@ -25,13 +25,14 @@ object ScheduleTime {
     fun nextOccurrences(now: ZonedDateTime, schedules: List<PunchSchedule>): Map<PunchSlot, ZonedDateTime> =
         schedules.filter { it.enabled }.associate { it.slot to next(now, it.hour, it.minute) }
 
-    // Two attempts take two minutes; leave cleanup time, including across midnight.
+    // Two 120-second attempts take four minutes; require a fifth minute for cleanup,
+    // including across midnight, so a second alarm is never discarded as a duplicate.
     fun hasConflict(schedules: List<PunchSchedule>): Boolean {
         val minutes = schedules.filter { it.enabled }.map { it.hour * 60 + it.minute }
         return minutes.indices.any { first ->
             (first + 1 until minutes.size).any { second ->
                 val gap = kotlin.math.abs(minutes[first] - minutes[second])
-                minOf(gap, 1440 - gap) < 3
+                minOf(gap, 1440 - gap) < 5
             }
         }
     }
