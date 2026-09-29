@@ -82,6 +82,19 @@ class MailProtocolTest {
         assertTrue(estimator.observe(59, false, 2000 + 5 * 60_000L, zone).text.contains("间隔不足"))
     }
 
+    @Test fun batteryEstimateWeightsRecentDischargeAndUsesConservativeLowBatteryFactor() {
+        val estimator = BatteryDischargeEstimator()
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = 1_800_000_000_000L
+        estimator.observe(80, false, start, zone)
+        estimator.observe(70, false, start + 60 * 60_000L, zone)
+        val normal = estimator.observe(60, false, start + 2 * 60 * 60_000L, zone).text
+        assertTrue(normal.contains("近期样本权重 70%"))
+        estimator.observe(25, false, start + 3 * 60 * 60_000L, zone)
+        val low = estimator.observe(20, false, start + 4 * 60 * 60_000L, zone).text
+        assertTrue(low.contains("低电量保守修正 ×1.35"))
+    }
+
     @Test fun lowBatteryAlertsOncePerDischargeAndNeverWhileCharging() {
         assertTrue(MailPolicy.lowBatteryAlert(20, false, false))
         assertFalse(MailPolicy.lowBatteryAlert(19, false, true))
