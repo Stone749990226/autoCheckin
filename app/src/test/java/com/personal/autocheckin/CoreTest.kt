@@ -27,11 +27,13 @@ class CoreTest {
         assertEquals(original[PunchSlot.CLOCK_OUT], disabled[PunchSlot.CLOCK_OUT])
     }
 
-    @Test fun enforcesRoomForTwoAttemptsIncludingAcrossMidnight() {
+    @Test fun enforcesFiveMinuteRoomForTwoAttemptsIncludingAcrossMidnight() {
         assertFalse(ScheduleTime.hasConflict(shifts))
         assertTrue(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 30))))
-        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 1))))
-        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 2))))
+        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 34))))
+        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 35))))
+        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 3))))
+        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 4))))
         assertFalse(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(enabled = false, hour = 8, minute = 30))))
     }
 

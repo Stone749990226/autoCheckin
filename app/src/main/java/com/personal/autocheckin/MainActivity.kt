@@ -54,7 +54,7 @@ class MainActivity : Activity() {
                     if (settings.schedules.none { it.enabled }) {
                         showMessage("暂时无法启用", "请至少开启上班卡或下班卡。")
                     } else if (ScheduleTime.hasConflict(settings.schedules)) {
-                        showMessage("时间冲突", "上下班任务需至少间隔 3 分钟，请修改时间。")
+                        showMessage("时间冲突", "上下班任务需至少间隔 5 分钟，请修改时间。")
                     } else if (missing.isNotEmpty()) {
                         showMessage("暂时无法启用", "请先完成：\n${missing.joinToString("\n")}")
                     } else {
@@ -136,7 +136,7 @@ class MainActivity : Activity() {
     private fun saveSchedule(config: PunchSchedule) {
         val proposed = settings.schedules.map { if (it.slot == config.slot) config else it }
         if (ScheduleTime.hasConflict(proposed)) {
-            showMessage("时间冲突", "上下班任务需至少间隔 3 分钟，避免上一任务尚未结束。")
+            showMessage("时间冲突", "上下班任务需至少间隔 5 分钟，避免上一任务尚未结束。")
             render()
             return
         }
