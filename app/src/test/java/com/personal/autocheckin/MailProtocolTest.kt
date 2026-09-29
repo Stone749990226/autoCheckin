@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.StringReader
 import java.io.StringWriter
+import java.time.ZoneId
 import java.util.Base64
 
 class MailProtocolTest {
@@ -56,6 +57,29 @@ class MailProtocolTest {
         assertFalse(MailPolicy.expired(100, 4, 101))
         assertTrue(MailPolicy.expired(100, 5, 101))
         assertTrue(MailPolicy.expired(100, 0, 101 + MailPolicy.MAX_AGE_MS))
+    }
+
+    @Test fun estimatesTenPercentFromInMemoryMailSamplesAndResetsAfterCharging() {
+        val estimator = BatteryDischargeEstimator()
+        val zone = ZoneId.of("Asia/Shanghai")
+        val start = 1_800_000_000_000L
+
+        assertTrue(estimator.observe(80, false, start, zone).text.contains("样本不足"))
+        val estimate = estimator.observe(70, false, start + 2 * 60 * 60_000L, zone).text
+        assertTrue(estimate.contains("放电基线"))
+        assertTrue(estimate.contains("预计低于 10%：约"))
+
+        assertTrue(estimator.observe(75, false, start + 3 * 60 * 60_000L, zone).text.contains("电量上升"))
+        assertTrue(estimator.observe(90, true, start + 4 * 60 * 60_000L, zone).text.contains("正在充电"))
+        assertTrue(estimator.observe(89, false, start + 5 * 60 * 60_000L, zone).text.contains("充电结束"))
+    }
+
+    @Test fun invalidOrShortBatterySamplesDoNotProduceAnEstimate() {
+        val estimator = BatteryDischargeEstimator()
+        val zone = ZoneId.of("Asia/Shanghai")
+        assertTrue(estimator.observe(-1, false, 1000, zone).text.contains("系统未返回有效电量"))
+        estimator.observe(60, false, 2000, zone)
+        assertTrue(estimator.observe(59, false, 2000 + 5 * 60_000L, zone).text.contains("间隔不足"))
     }
 
     @Test fun lowBatteryAlertsOncePerDischargeAndNeverWhileCharging() {

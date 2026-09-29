@@ -154,7 +154,7 @@ class MainActivity : Activity() {
         val missing = Permissions.missing(this, requireExact = true)
         if (missing.isNotEmpty()) showMessage("请先完成设置", missing.joinToString("\n"))
         else AlertDialog.Builder(this).setTitle("测试${slot.label}")
-            .setMessage("点击开始后等待 5 秒，请在倒计时内手动灭屏。5 秒后系统闹钟会触发完整流程：自动亮屏、打开钉钉、最多等待两次（每次 60 秒），结束后自动锁屏。可能触发真实打卡；时段标签不改变钉钉自身的考勤规则。")
+            .setMessage("点击开始后等待 5 秒，请在倒计时内手动灭屏。5 秒后系统闹钟会触发完整流程：自动亮屏、打开钉钉、最多等待两次（每次 120 秒），结束后自动锁屏。可能触发真实打卡；时段标签不改变钉钉自身的考勤规则。")
             .setNegativeButton("取消", null).setPositiveButton("开始 5 秒倒计时") { _, _ ->
                 if (AlarmScheduler.scheduleFullTest(this, slot)) {
                     toast("5 秒后开始，请现在手动灭屏")

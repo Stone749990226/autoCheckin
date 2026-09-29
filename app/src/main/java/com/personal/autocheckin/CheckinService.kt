@@ -22,6 +22,10 @@ class CheckinService : Service() {
         const val CHANNEL = "checkin_execution"
         const val ACTION_STOP = "com.personal.autocheckin.STOP"
         private const val NOTIFICATION_ID = 1
+        private const val ATTEMPT_TIMEOUT_MS = 120_000L
+        // CPU-only leak guard for two attempts plus launch handoff. The screen lock is
+        // separately renewed for exactly 120 seconds at the start of each attempt.
+        private const val CPU_LOCK_TIMEOUT_MS = 250_000L
         var current: CheckinService? = null
             private set
 
@@ -78,7 +82,7 @@ class CheckinService : Service() {
             settings.activeRun = runId
             keywords = settings.keywords
             clickConfig = settings.click
-            log("START", "来源=${intent?.getStringExtra("source") ?: "unknown"}；最多两次，每次 60 秒")
+            log("START", "来源=${intent?.getStringExtra("source") ?: "unknown"}；最多两次，每次 120 秒")
             val missing = Permissions.missing(this, requireExact = intent?.getStringExtra("source") == "alarm")
             if (missing.isNotEmpty()) {
                 fail("缺少条件：${missing.joinToString("、")}")
@@ -97,22 +101,27 @@ class CheckinService : Service() {
         val power = getSystemService(PowerManager::class.java)
         cpuLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:cpu").apply {
             setReferenceCounted(false)
-            acquire(150_000L)
+            acquire(CPU_LOCK_TIMEOUT_MS)
         }
         // WakeActivity remains the foreground-path fallback. On this Honor Android 10 device,
-        // the dim screen lock wakes reliably only while charging, so request a bounded bright
-        // screen lock when running on battery. Both locks release on every terminal path.
+        // a bright screen lock is required for reliable battery-powered wake-up.
         screenLock = power.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "$packageName:screen",
-        ).apply {
-            setReferenceCounted(false)
-            acquire(150_000L)
+        ).apply { setReferenceCounted(false) }
+        acquireScreenLockForAttempt()
+    }
+
+    private fun acquireScreenLockForAttempt() {
+        screenLock?.let { lock ->
+            if (lock.isHeld) lock.release()
+            lock.acquire(ATTEMPT_TIMEOUT_MS)
         }
     }
 
     private fun beginAttempt() {
         if (finalized) return
+        if (tracker.attempt > 1) acquireScreenLockForAttempt()
         observing = false
         attemptStartedAt = SystemClock.uptimeMillis()
         log("ATTEMPT", "第 ${tracker.attempt} 次：请求唤醒并打开钉钉")
@@ -121,11 +130,11 @@ class CheckinService : Service() {
             if (!finalized) {
                 observing = false
                 handler.removeCallbacksAndMessages(null)
-                log("TIMEOUT", "第 ${tracker.attempt} 次 60 秒内未识别到成功")
+                log("TIMEOUT", "第 ${tracker.attempt} 次 120 秒内未识别到成功")
                 if (tracker.timeout()) beginAttempt()
                 else terminate(RunOutcome.UNCONFIRMED, "两次等待均未识别成功；请人工核对钉钉考勤记录")
             }
-        }, 60_000L)
+        }, ATTEMPT_TIMEOUT_MS)
         val accessibility = CheckinAccessibilityService.connected
         if (accessibility == null) {
             fail("无障碍服务未连接")
