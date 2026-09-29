@@ -113,17 +113,38 @@ class BatteryDischargeEstimator {
             return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（放电样本间隔不足）")
         }
         val remainingPercent = (percent - 10).coerceAtLeast(0)
-        val millisToTen = elapsed.toDouble() * remainingPercent / dropped
+        val baselineRate = dropped.toDouble() / elapsed
+        val recentElapsed = atMillis - (previous?.atMillis ?: start.atMillis)
+        val recentDropped = (previous?.percent ?: start.percent) - percent
+        val recentRate = if (recentElapsed >= MIN_SAMPLE_INTERVAL_MS && recentDropped > 0) {
+            recentDropped.toDouble() / recentElapsed
+        } else {
+            baselineRate
+        }
+        // Recent consumption is more predictive, while retaining a baseline component
+        // avoids one noisy mail sample dominating the forecast.
+        val weightedRate = recentRate * RECENT_WEIGHT + baselineRate * BASELINE_WEIGHT
+        val lowBatteryFactor = when {
+            percent <= 10 -> 1.80
+            percent <= 20 -> 1.35
+            percent <= 30 -> 1.10
+            else -> 1.0
+        }
+        val millisToTen = if (remainingPercent == 0) 0.0 else
+            remainingPercent / (weightedRate * lowBatteryFactor)
         if (!millisToTen.isFinite() || millisToTen > MAX_ESTIMATE_MS) {
             return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（结果超出合理范围）")
         }
         val estimatedAt = atMillis + millisToTen.roundToLong()
         val formatted = Instant.ofEpochMilli(estimatedAt).atZone(zoneId).format(ESTIMATE_FORMAT)
-        return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：约 $formatted（按本次进程内邮件样本的平均放电速度估算，仅供参考）")
+        val factorText = if (lowBatteryFactor == 1.0) "" else "；低电量保守修正 ×$lowBatteryFactor"
+        return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：约 $formatted（近期样本权重 70%、全段基线权重 30%$factorText；仅供参考）")
     }
 
     companion object {
         private const val MIN_SAMPLE_INTERVAL_MS = 10 * 60_000L
+        private const val RECENT_WEIGHT = 0.70
+        private const val BASELINE_WEIGHT = 0.30
         private const val MAX_ESTIMATE_MS = 30L * 24 * 60 * 60 * 1000
         private val ESTIMATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z")
     }
