@@ -8,7 +8,7 @@
     <string name="main_text_2">每天打开钉钉，等待极速打卡结果并锁屏。请提前准备好登录、定位与考勤 Wi-Fi。</string>
     <string name="main_text_3">启用每日任务</string>
     <string name="main_text_5">测试启动钉钉</string>
-    <string name="main_text_6">测试完整流程（5 秒后亮屏，结束后锁屏）</string>
+    <string name="main_text_6">测试完整流程（5 秒后亮屏，最多两次各 120 秒）</string>
     <string name="main_text_7">停止本次运行（不锁屏）</string>
     <string name="main_text_8">查看最近日志</string>
     <string name="main_text_9">高级识别与点击配置</string>

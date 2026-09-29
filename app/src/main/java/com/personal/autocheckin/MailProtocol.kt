@@ -3,9 +3,12 @@ package com.personal.autocheckin
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import kotlin.math.roundToLong
 
 class SmtpFailure(val code: Int) : IOException("SMTP $code")
 
@@ -69,6 +72,60 @@ object MailProtocol {
         expect(reader, 250)
         // A QUIT failure must not retry a message already accepted by the server.
         try { writer.write("QUIT\r\n"); writer.flush() } catch (_: IOException) { }
+    }
+}
+
+data class BatterySample(val percent: Int, val atMillis: Long, val plugged: Boolean)
+
+data class BatteryEstimate(val text: String)
+
+/** In-memory only: a process restart intentionally drops the estimate history. */
+class BatteryDischargeEstimator {
+    private var baseline: BatterySample? = null
+    private var lastSample: BatterySample? = null
+
+    fun observe(percent: Int, plugged: Boolean, atMillis: Long, zoneId: ZoneId): BatteryEstimate {
+        if (percent !in 0..100) return BatteryEstimate("电量：未知\n电量趋势：无法估算（系统未返回有效电量）")
+        val current = BatterySample(percent, atMillis, plugged)
+        val previous = lastSample
+        val reason = when {
+            plugged -> "正在充电，已重置放电基线"
+            previous == null -> "样本不足"
+            previous.plugged -> "充电结束，已建立新的放电基线"
+            percent > previous.percent -> "电量上升，检测到充电并重置基线"
+            atMillis <= previous.atMillis -> "时间样本异常，已重置放电基线"
+            else -> null
+        }
+        if (reason != null) {
+            baseline = current
+            lastSample = current
+            return BatteryEstimate("电量：$percent%\n电量趋势：无法估算（$reason）")
+        }
+        lastSample = current
+        val start = baseline ?: current.also { baseline = it }
+        val baselineText = Instant.ofEpochMilli(start.atMillis).atZone(zoneId).format(ESTIMATE_FORMAT)
+        if (percent >= start.percent) {
+            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（尚未观察到电量下降）")
+        }
+        val elapsed = atMillis - start.atMillis
+        val dropped = start.percent - percent
+        if (elapsed < MIN_SAMPLE_INTERVAL_MS) {
+            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（放电样本间隔不足）")
+        }
+        val remainingPercent = (percent - 10).coerceAtLeast(0)
+        val millisToTen = elapsed.toDouble() * remainingPercent / dropped
+        if (!millisToTen.isFinite() || millisToTen > MAX_ESTIMATE_MS) {
+            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（结果超出合理范围）")
+        }
+        val estimatedAt = atMillis + millisToTen.roundToLong()
+        val formatted = Instant.ofEpochMilli(estimatedAt).atZone(zoneId).format(ESTIMATE_FORMAT)
+        return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：约 $formatted（按本次进程内邮件样本的平均放电速度估算，仅供参考）")
+    }
+
+    companion object {
+        private const val MIN_SAMPLE_INTERVAL_MS = 10 * 60_000L
+        private const val MAX_ESTIMATE_MS = 30L * 24 * 60 * 60 * 1000
+        private val ESTIMATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z")
     }
 }
 
