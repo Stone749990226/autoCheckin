@@ -40,8 +40,9 @@ class MotionService : Service(), SensorEventListener {
             .firstOrNull { it.isWakeUpSensor && it.stringType == "android.sensor.tilt_detector" }
         // Deliberately the non-wakeup accelerometer: a wakeup sensor would hold a CPU WakeLock for the whole arm window.
         fun accelerometer(manager: SensorManager): Sensor? = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        /** 约 1 Hz，仅用于兜底判断大幅移动，不做连续采样。 */
-        const val ACCELERATION_PERIOD_US = 1_000_000
+        /** 请求约 0.1 Hz；HAL 可能给出更快事件，服务层仍会抽样到 10 秒一次。 */
+        const val ACCELERATION_PERIOD_US = 10_000_000
+        const val ACCELERATION_SAMPLE_INTERVAL_NS = 10_000_000_000L
 
         fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -64,6 +65,7 @@ class MotionService : Service(), SensorEventListener {
     private var significantRegistered = false
     private var tiltRegistered = false
     private var accelerationRegistered = false
+    private var lastAccelerationSampleNanos = Long.MIN_VALUE
     private val accelerationDetector = AccelerationMotionDetector()
     private var registeredAt = 0L
     private var started = false
@@ -138,6 +140,7 @@ class MotionService : Service(), SensorEventListener {
             if (settings.acceleration && !accelerationRegistered) accelerometer(sensors)?.let { sensor ->
                 // 基线必须来自本次布防后的第一次采样，所以每次（重新）注册都清空检测器状态。
                 accelerationDetector.reset()
+                lastAccelerationSampleNanos = Long.MIN_VALUE
                 accelerationRegistered = sensors.registerListener(this, sensor, ACCELERATION_PERIOD_US, 0, handler)
             }
         } catch (e: Exception) {
@@ -179,6 +182,7 @@ class MotionService : Service(), SensorEventListener {
         significantRegistered = false
         tiltRegistered = false
         accelerationRegistered = false
+        lastAccelerationSampleNanos = Long.MIN_VALUE
         accelerationDetector.reset()
         sensorStatus = "传感器已暂停"
     }
@@ -208,6 +212,10 @@ class MotionService : Service(), SensorEventListener {
             movement("倾斜/拿起（可能被翻转）", event.timestamp)
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             if (!settings.acceleration) return
+            // HAL may ignore the requested period; enforce a true 10-second input cadence here.
+            if (lastAccelerationSampleNanos != Long.MIN_VALUE &&
+                event.timestamp - lastAccelerationSampleNanos < ACCELERATION_SAMPLE_INTERVAL_NS) return
+            lastAccelerationSampleNanos = event.timestamp
             // 检测器只在开关开启时被注册，未注册的残留事件在布防/限频期同样会被 movement() 丢弃。
             val detected = accelerationDetector.observe(event.values[0], event.values[1], event.values[2]) ?: return
             val source = if (detected == AccelerationMotion.ORIENTATION) "加速度计姿态变化" else "加速度计明显加速"
