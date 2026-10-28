@@ -1,5 +1,7 @@
 package com.personal.autocheckin
 
+import android.accessibilityservice.AccessibilityService
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -26,6 +28,8 @@ class CheckinService : Service() {
         // CPU-only leak guard for two attempts plus launch handoff. The screen lock is
         // separately renewed for exactly 120 seconds at the start of each attempt.
         private const val CPU_LOCK_TIMEOUT_MS = 250_000L
+        // Give the server acknowledgement a moment before clearing DingTalk's background process.
+        private const val DINGTALK_KILL_DELAY_MS = 3_000L
         var current: CheckinService? = null
             private set
 
@@ -208,8 +212,14 @@ class CheckinService : Service() {
         handler.removeCallbacksAndMessages(null)
         CheckinAccessibilityService.connected?.setObservationEnabled(false)
         val logged = writeRecord(outcome.name, detail)
+        val success = outcome == RunOutcome.SUCCESS
         WakeActivity.finishRun(runId)
         releaseLocks()
+        // killBackgroundProcesses ignores a foreground app, so send DingTalk home first.
+        if (success) {
+            try { CheckinAccessibilityService.connected?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) }
+            catch (_: Exception) { /* Cleanup below is best effort. */ }
+        }
         var lockResult = "本次未主动锁屏"
         if (lock && wakeRequested) {
             try {
@@ -233,14 +243,37 @@ class CheckinService : Service() {
             RunOutcome.CANCELLED -> "本次任务已停止"
             else -> "任务已结束"
         }
-        MailQueue.enqueue(this, "${slot.label} · $summary", "运行 ID：$runId\n任务：${slot.label}\n结果：$summary\n详情：$detail\n锁屏：$lockResult", "result-$runId")
+        MailQueue.enqueue(this, "${slot.label} · $summary", "运行 ID：$runId\n任务：${slot.label}\n结果：$summary\n详情：$detail\n锁屏：$lockResult" +
+            (if (success) "\n钉钉后台进程：已尝试清理，结果见本地日志 DINGTALK_KILL" else ""), "result-$runId")
         SettingsStore(this).activeRun = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
         try {
             getSystemService(NotificationManager::class.java).notify(2,
                 notification(if (logged) summary else "$summary；日志写入失败", ongoing = false))
         } catch (_: SecurityException) { /* Permission may have been revoked mid-run. */ }
-        stopSelf()
+        if (success) {
+            // Keep the service alive briefly so the delayed cleanup survives process teardown.
+            handler.postDelayed({
+                clearDingTalkBackground()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }, DINGTALK_KILL_DELAY_MS)
+        } else {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    /**
+     * Best effort only: without root a normal app can clear another package's background
+     * processes but cannot force-stop it. DingTalk foreground services may survive.
+     */
+    private fun clearDingTalkBackground() {
+        try {
+            getSystemService(ActivityManager::class.java).killBackgroundProcesses(Permissions.DINGTALK)
+            writeRecord("DINGTALK_KILL", "已请求清理钉钉后台进程；系统可能保留其前台服务或推送进程")
+        } catch (e: Exception) {
+            writeRecord("DINGTALK_KILL_ERROR", "清理钉钉后台进程失败：${e.javaClass.simpleName}")
+        }
     }
 
     private fun notification(message: String, ongoing: Boolean): Notification {
