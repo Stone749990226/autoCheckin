@@ -7,5 +7,5 @@
         <item name="android:navigationBarColor">#F4F7F8</item>
         <item name="android:windowBackground">#F4F7F8</item>
     </style>
-    <string name="accessibility_description">仅在打卡任务运行期间读取钉钉的成功提示，可按你的配置点击节点或坐标，并拉起唤醒界面。日志仅保存在本机。</string>
+    <string name="accessibility_description">仅在任务运行期间读取钉钉的成功提示，可按你的配置点击节点或坐标，并拉起唤醒界面。日志仅保存在本机。</string>
 </resources>

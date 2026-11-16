@@ -36,7 +36,7 @@ class CheckinService : Service() {
 
         fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, "打卡任务", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CHANNEL, "General", NotificationManager.IMPORTANCE_LOW),
             )
         }
     }
@@ -76,7 +76,7 @@ class CheckinService : Service() {
         started = true
         slot = PunchSlot.fromKey(intent?.getStringExtra("slot")) ?: PunchSlot.CLOCK_IN
         try {
-            val notification = notification("正在准备自动打卡", ongoing = true)
+            val notification = notification("Preparing…", ongoing = true)
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
@@ -132,7 +132,7 @@ class CheckinService : Service() {
         observing = false
         roundStartedAt = SystemClock.uptimeMillis()
         log("ATTEMPT", "第 ${tracker.round}/${RetryPlan.ROUNDS} 轮：请求唤醒并打开钉钉")
-        updateNotification("第 ${tracker.round}/${RetryPlan.ROUNDS} 轮，等待打卡结果")
+        updateNotification("Round ${tracker.round}/${RetryPlan.ROUNDS}")
         handler.postDelayed({ onRoundWindowElapsed() }, RetryPlan.WINDOW_MS)
         val accessibility = CheckinAccessibilityService.connected
         if (accessibility == null) {
@@ -166,7 +166,7 @@ class CheckinService : Service() {
             terminate(RunOutcome.UNCONFIRMED, "${RetryPlan.ROUNDS} 轮等待均未识别成功；请人工核对钉钉考勤记录")
             return
         }
-        updateNotification("第 ${tracker.round - 1}/${RetryPlan.ROUNDS} 轮未确认，准备第 ${tracker.round} 轮")
+        updateNotification("Retrying…")
         val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
         if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1) {
             // Batch boundary: DingTalk is sent home first so it can be cleared, then relaunched.
@@ -180,7 +180,7 @@ class CheckinService : Service() {
     private fun restartDingTalk() {
         if (finalized) return
         clearDingTalkBackground("第 ${RetryPlan.ROUNDS_PER_BATCH} 轮未确认，清理钉钉后台进程后重新启动")
-        updateNotification("正在重新启动钉钉（第 ${tracker.round}/${RetryPlan.ROUNDS} 轮）")
+        updateNotification("Round ${tracker.round}/${RetryPlan.ROUNDS}")
         val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
         handler.postDelayed({ beginRound() }, (nextStart - SystemClock.uptimeMillis()).coerceAtLeast(0L))
     }
@@ -237,7 +237,7 @@ class CheckinService : Service() {
 
     fun log(event: String, detail: String) {
         if (!writeRecord(event, detail)) {
-            updateNotification("本地日志写入失败，请检查可用空间")
+            updateNotification("Log write failed, check free space")
         }
     }
 
@@ -256,35 +256,38 @@ class CheckinService : Service() {
         releaseLocks()
         // killBackgroundProcesses ignores a foreground app, so send DingTalk home first.
         if (cleanupDingTalk) goHome()
-        var lockResult = "本次未主动锁屏"
+        var lockText = "not locked"
         if (lock && wakeRequested) {
             try {
                 if (Permissions.deviceAdmin(this)) {
                     getSystemService(DevicePolicyManager::class.java).lockNow()
-                    lockResult = "已调用系统锁屏"
+                    lockText = "screen locked"
                     writeRecord("LOCKED", "已调用系统锁屏")
                 } else {
-                    lockResult = "锁屏失败：设备管理员权限不可用"
+                    lockText = "lock failed: device admin unavailable"
                     writeRecord("LOCK_ERROR", "设备管理员权限不可用，无法锁屏")
                 }
             } catch (e: Exception) {
-                lockResult = "锁屏失败：${e.javaClass.simpleName}"
+                lockText = "lock failed: ${e.javaClass.simpleName}"
                 writeRecord("LOCK_ERROR", e.javaClass.simpleName)
             }
         }
-        val summary = when (outcome) {
-            RunOutcome.SUCCESS -> "已识别到打卡成功"
-            RunOutcome.UNCONFIRMED -> "打卡结果未确认，请人工核对"
-            RunOutcome.ERROR -> "任务异常，请查看日志"
-            RunOutcome.CANCELLED -> "本次任务已停止"
-            else -> "任务已结束"
+        val mailBody = buildString {
+            appendLine("Run: $runId")
+            appendLine("Task: ${MailText.task(slot)}")
+            appendLine("Result: ${MailText.result(outcome)}")
+            appendLine("Rounds: ${tracker.round} of ${RetryPlan.ROUNDS}")
+            appendLine("Lock: $lockText")
+            if (outcome == RunOutcome.ERROR) appendLine("Reason: ${MailText.reason(detail)}")
+            append("DingTalk background process: " +
+                if (cleanupDingTalk) "cleanup requested, see DINGTALK_KILL in the local log"
+                else "left running")
         }
-        MailQueue.enqueue(this, "${slot.label} · $summary", "运行 ID：$runId\n任务：${slot.label}\n结果：$summary\n详情：$detail\n锁屏：$lockResult" +
-            (if (cleanupDingTalk) "\n钉钉后台进程：已尝试清理，结果见本地日志 DINGTALK_KILL" else ""), "result-$runId")
+        MailQueue.enqueue(this, "${MailText.task(slot)}: ${MailText.result(outcome)}", mailBody, "result-$runId")
         SettingsStore(this).activeRun = null
         try {
             getSystemService(NotificationManager::class.java).notify(2,
-                notification(if (logged) summary else "$summary；日志写入失败", ongoing = false))
+                notification(if (logged) MailText.headline(outcome) else "${MailText.headline(outcome)} (log write failed)", ongoing = false))
         } catch (_: SecurityException) { /* Permission may have been revoked mid-run. */ }
         if (cleanupDingTalk) {
             // Keep the service alive briefly so the delayed cleanup survives process teardown.
@@ -315,11 +318,13 @@ class CheckinService : Service() {
     private fun notification(message: String, ongoing: Boolean): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val builder = Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("自动打卡助手 · ${slot.label}").setContentText(message).setContentIntent(open)
+            .setContentTitle(MailText.APP).setContentText(message).setContentIntent(open)
             .setOngoing(ongoing).setAutoCancel(!ongoing).setOnlyAlertOnce(true)
+            // Hidden on the lock screen: only "one notification" is shown there.
+            .setVisibility(Notification.VISIBILITY_SECRET)
         if (ongoing) {
             val stop = PendingIntent.getService(this, 1, Intent(this, CheckinService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(Notification.Action.Builder(null, "停止（不锁屏）", stop).build())
+            builder.addAction(Notification.Action.Builder(null, "Stop", stop).build())
         }
         return builder.build()
     }
@@ -340,7 +345,9 @@ class CheckinService : Service() {
     override fun onDestroy() {
         if (!finalized && started) {
             writeRecord("INTERRUPTED", "运行服务被销毁，结果未确认")
-            MailQueue.enqueue(this, "${slot.label}运行中断", "运行 ID：$runId\n运行服务被销毁，结果未确认，请核对考勤。", "interrupted-$runId")
+            MailQueue.enqueue(this, "${MailText.task(slot)}: interrupted",
+                "Run: $runId\nTask: ${MailText.task(slot)}\nResult: interrupted\n" +
+                    "Note: the background service was destroyed before a result was recorded.", "interrupted-$runId")
             SettingsStore(this).activeRun = null
             releaseLocks()
             if (wakeRequested && Permissions.deviceAdmin(this)) {

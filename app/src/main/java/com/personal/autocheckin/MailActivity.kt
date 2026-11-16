@@ -43,7 +43,7 @@ class MailActivity : Activity() {
         findViewById<Button>(R.id.mail_test).setOnClickListener {
             if (save()) {
                 if (!settings.enabled) message("请先开启邮件通知并保存")
-                else if (MailQueue.enqueue(this, "邮件配置测试", "这是一封从手机发出的测试邮件，不代表执行了考勤任务。")) message("测试邮件已排队，请查看发送状态与收件箱")
+                else if (MailQueue.enqueue(this, "Test message", "This is a test message from the phone. No task was executed.")) message("测试邮件已排队，请查看发送状态与收件箱")
             }
         }
         findViewById<Button>(R.id.mail_retry).setOnClickListener {

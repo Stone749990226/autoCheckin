@@ -46,7 +46,7 @@ class MotionService : Service(), SensorEventListener {
 
         fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, "防移动监测", NotificationManager.IMPORTANCE_LOW))
+                NotificationChannel(CHANNEL, "Background", NotificationManager.IMPORTANCE_LOW))
         }
 
         fun resumeIfEnabled(context: Context) {
@@ -198,8 +198,17 @@ class MotionService : Service(), SensorEventListener {
         val batteryText = if (battery in 0..100) "$battery%" else "未知"
         RunLog.write(this, null, "MOTION_DETECTED", "${settings.modeLabel}：$source；电量 $batteryText")
         val mail = MailSettings(this)
-        val subject = if (settings.testMode) "防移动自测：检测到移动" else "手机疑似被移动"
-        val queued = MailQueue.enqueue(this, subject, "模式：${settings.modeLabel}\n检测时间：$time\n触发类型：$source\n剩余电量：$batteryText\n手机可能被拿起、翻转或随盒子搬动。此事件不能证明手机被盗。\n${settings.cooldownMs / 1000} 秒内不重复提醒，到期自动恢复检测。")
+        val subject = if (settings.testMode) "Device moved (test)" else "Device moved"
+        val trigger = when {
+            source.startsWith("倾斜") -> "tilt / pickup"
+            source.startsWith("显著运动") -> "significant motion"
+            source.startsWith("加速度计姿态") -> "accelerometer orientation change"
+            else -> "accelerometer movement"
+        }
+        val queued = MailQueue.enqueue(this, subject,
+            "Mode: ${if (settings.testMode) "test" else "armed"}\nDetected: $time\nTrigger: $trigger\nBattery: $batteryText\n\n" +
+                "The device may have been picked up, tilted or moved with its box. This does not prove theft.\n" +
+                "Monitoring resumes automatically; no repeat alert for ${settings.cooldownMs / 1000} s.")
         if (!queued || mail.blocked) {
             settings.problem = if (!queued) "移动已记录，但邮件未入队，请检查邮件设置" else "移动邮件已排队，但发信暂停，请检查邮件授权码或 TLS 状态"
             RunLog.write(this, null, "MOTION_MAIL_ERROR", settings.problem)
@@ -228,7 +237,8 @@ class MotionService : Service(), SensorEventListener {
         settings.disable()
         settings.problem = message
         RunLog.write(this, null, "MOTION_ERROR", message)
-        MailQueue.enqueue(this, "防移动监测异常", message)
+        MailQueue.enqueue(this, "Sensor monitor error",
+            "Monitoring stopped and must be re-armed in the app.\nReason: ${message.take(160)}")
         stopGuard()
     }
 
@@ -236,9 +246,10 @@ class MotionService : Service(), SensorEventListener {
         val open = PendingIntent.getActivity(this, 30, Intent(this, MotionActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val pause = PendingIntent.getService(this, 31, Intent(this, MotionService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("防移动监测 · ${settings.modeLabel}").setContentText(message).setStyle(Notification.BigTextStyle().bigText(message))
+            .setContentTitle(MailText.APP).setContentText(message).setStyle(Notification.BigTextStyle().bigText(message))
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(Notification.Action.Builder(null, "暂停监测", pause).build()).build()
+            .setVisibility(Notification.VISIBILITY_SECRET)
+            .addAction(Notification.Action.Builder(null, "Stop", pause).build()).build()
     }
     private fun updateNotification(message: String) { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(message)) }
     fun stopGuard() {

@@ -4,7 +4,7 @@
     <string name="clock_in_default">08:30</string>
     <string name="clock_out_default">18:00</string>
     <string name="schedule_hint">点击右侧时间修改；可分别启停。两次任务至少间隔 15 分钟（4 轮重试约 12 分钟）。每次结束锁屏，下一时段会再次唤醒。</string>
-    <string name="main_text_1">自动打卡助手</string>
+    <string name="main_text_1">Helper</string>
     <string name="main_text_2">每天打开钉钉，等待极速打卡结果并锁屏。请提前准备好登录、定位与考勤 Wi-Fi。</string>
     <string name="main_text_3">启用每日任务</string>
     <string name="main_text_5">测试启动钉钉</string>

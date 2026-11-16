@@ -23,7 +23,7 @@ object MailProtocol {
         val data = Base64.getMimeEncoder(76, "\r\n".toByteArray()).encodeToString(body.toByteArray(Charsets.UTF_8))
         return "From: <$sender>\r\nTo: <$recipient>\r\n" +
             "Date: ${ZonedDateTime.now().format(DateTimeFormatter.RFC_1123_DATE_TIME)}\r\n" +
-            "Message-ID: <$id@autocheckin.local>\r\nSubject: $subjectWords\r\n" +
+            "Message-ID: <$id@sync.local>\r\nSubject: $subjectWords\r\n" +
             "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n$data\r\n"
     }
 
@@ -59,7 +59,7 @@ object MailProtocol {
             expect(reader, *expected)
         }
         expect(reader, 220)
-        command("EHLO autocheckin.local", 250)
+        command("EHLO sync.local", 250)
         command("AUTH LOGIN", 334)
         command(encoded(sender), 334)
         command(encoded(secret), 235)
@@ -85,32 +85,32 @@ class BatteryDischargeEstimator {
     private var lastSample: BatterySample? = null
 
     fun observe(percent: Int, plugged: Boolean, atMillis: Long, zoneId: ZoneId): BatteryEstimate {
-        if (percent !in 0..100) return BatteryEstimate("电量：未知\n电量趋势：无法估算（系统未返回有效电量）")
+        if (percent !in 0..100) return BatteryEstimate("Battery: unknown\nTrend: unavailable (no valid reading)")
         val current = BatterySample(percent, atMillis, plugged)
         val previous = lastSample
         val reason = when {
-            plugged -> "正在充电，已重置放电基线"
-            previous == null -> "样本不足"
-            previous.plugged -> "充电结束，已建立新的放电基线"
-            percent > previous.percent -> "电量上升，检测到充电并重置基线"
-            atMillis <= previous.atMillis -> "时间样本异常，已重置放电基线"
+            plugged -> "charging, baseline reset"
+            previous == null -> "insufficient samples"
+            previous.plugged -> "charging ended, new baseline"
+            percent > previous.percent -> "battery rising, baseline reset"
+            atMillis <= previous.atMillis -> "timestamp out of order, baseline reset"
             else -> null
         }
         if (reason != null) {
             baseline = current
             lastSample = current
-            return BatteryEstimate("电量：$percent%\n电量趋势：无法估算（$reason）")
+            return BatteryEstimate("Battery: $percent%\nTrend: unavailable ($reason)")
         }
         lastSample = current
         val start = baseline ?: current.also { baseline = it }
         val baselineText = Instant.ofEpochMilli(start.atMillis).atZone(zoneId).format(ESTIMATE_FORMAT)
         if (percent >= start.percent) {
-            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（尚未观察到电量下降）")
+            return BatteryEstimate("Battery: $percent%\nBaseline: $baselineText ${start.percent}%\nBelow 10%: unavailable (no drop observed yet)")
         }
         val elapsed = atMillis - start.atMillis
         val dropped = start.percent - percent
         if (elapsed < MIN_SAMPLE_INTERVAL_MS) {
-            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（放电样本间隔不足）")
+            return BatteryEstimate("Battery: $percent%\nBaseline: $baselineText ${start.percent}%\nBelow 10%: unavailable (sample interval too short)")
         }
         val remainingPercent = (percent - 10).coerceAtLeast(0)
         val baselineRate = dropped.toDouble() / elapsed
@@ -133,12 +133,12 @@ class BatteryDischargeEstimator {
         val millisToTen = if (remainingPercent == 0) 0.0 else
             remainingPercent / (weightedRate * lowBatteryFactor)
         if (!millisToTen.isFinite() || millisToTen > MAX_ESTIMATE_MS) {
-            return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：无法估算（结果超出合理范围）")
+            return BatteryEstimate("Battery: $percent%\nBaseline: $baselineText ${start.percent}%\nBelow 10%: unavailable (estimate out of range)")
         }
         val estimatedAt = atMillis + millisToTen.roundToLong()
         val formatted = Instant.ofEpochMilli(estimatedAt).atZone(zoneId).format(ESTIMATE_FORMAT)
-        val factorText = if (lowBatteryFactor == 1.0) "" else "；低电量保守修正 ×$lowBatteryFactor"
-        return BatteryEstimate("电量：$percent%\n放电基线：$baselineText ${start.percent}%\n预计低于 10%：约 $formatted（近期样本权重 70%、全段基线权重 30%$factorText；仅供参考）")
+        val factorText = if (lowBatteryFactor == 1.0) "" else "; low-battery factor x$lowBatteryFactor"
+        return BatteryEstimate("Battery: $percent%\nBaseline: $baselineText ${start.percent}%\nBelow 10%: about $formatted (recent 70% / baseline 30%$factorText; estimate only)")
     }
 
     companion object {

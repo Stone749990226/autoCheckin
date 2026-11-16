@@ -59,9 +59,9 @@ object MailQueue {
             val batteryState = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val plugged = batteryState?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)?.let { it != 0 } ?: false
             val batteryLog = batteryEstimator.observe(battery, plugged, System.currentTimeMillis(), now.zone).text
-            val body = "自动打卡助手\n时间：$timestamp\n$batteryLog\n$detail\n\n设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
-                "提示：识别成功仅表示读取到成功提示；未确认不等于实际考勤失败。请以钉钉考勤记录为准。"
-            write(context, existing + QueuedMail(eventId, "[自动打卡] $subject", body, System.currentTimeMillis()))
+            // Mail is English-only so lock-screen previews and inbox lists stay unremarkable.
+            val body = "${MailText.APP}\nTime: $timestamp\n$batteryLog\n\n$detail"
+            write(context, existing + QueuedMail(eventId, "[${MailText.APP}] $subject", body, System.currentTimeMillis()))
             settings.lastStatus = "$timestamp 已加入待发队列：$subject"
             RunLog.write(context, null, "MAIL_QUEUED", subject)
             schedule(context)

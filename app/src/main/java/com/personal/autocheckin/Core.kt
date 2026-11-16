@@ -26,6 +26,63 @@ object RetryPlan {
     const val SLOT_GAP_MINUTES = 15
 }
 
+/**
+ * English wording for outgoing mail only: subjects and bodies never contain the Chinese task
+ * wording, while the in-app interface and logs stay Chinese for troubleshooting.
+ */
+object MailText {
+    const val APP = "Helper"
+
+    fun task(slot: PunchSlot): String = when (slot) {
+        PunchSlot.CLOCK_IN -> "Morning task"
+        PunchSlot.CLOCK_OUT -> "Evening task"
+    }
+
+    /** Same as [task], for call sites that only kept the Chinese slot label. */
+    fun task(label: String): String = if (label.contains("上班")) "Morning task" else "Evening task"
+
+    fun result(outcome: RunOutcome): String = when (outcome) {
+        RunOutcome.SUCCESS -> "completed"
+        RunOutcome.UNCONFIRMED -> "needs review"
+        RunOutcome.ERROR -> "error"
+        RunOutcome.CANCELLED -> "cancelled"
+        else -> "finished"
+    }
+
+    fun headline(outcome: RunOutcome): String = result(outcome).replaceFirstChar { it.uppercase() }
+
+    /** Mail-only translation; the Chinese detail is still what the local log records. */
+    fun reason(detail: String): String = when {
+        detail.startsWith("缺少条件：") -> "Missing requirement: " +
+            detail.removePrefix("缺少条件：").split("、").joinToString(", ") { requirement(it) }
+        detail.startsWith("后台唤醒失败：") -> "Wake-up failed: " + detail.substringAfter("：")
+        detail.startsWith("启动异常：") -> "Startup failed: " + detail.substringAfter("：")
+        detail.startsWith("启动钉钉失败：") -> "Could not open DingTalk: " + detail.substringAfter("：")
+        detail.startsWith("执行点击时") -> "Accessibility service disconnected before the configured click"
+        detail == "找不到钉钉启动入口" -> "DingTalk launch entry not found"
+        detail == "无障碍服务未连接" -> "Accessibility service not connected"
+        detail == "检测到安全锁屏，无法自动解锁" -> "Secure lock screen detected, cannot unlock automatically"
+        detail == "系统拒绝解除无密码锁屏" -> "System refused to dismiss the swipe lock"
+        detail == "解除锁屏被取消" -> "Keyguard dismissal was cancelled"
+        detail == "设备管理员权限被撤销" -> "Device admin permission was revoked"
+        detail.startsWith("无障碍服务被系统中断") -> "Accessibility service was interrupted by the system"
+        detail.startsWith("无障碍服务已断开") -> "Accessibility service disconnected"
+        detail.startsWith("无障碍服务已销毁") -> "Accessibility service was destroyed"
+        else -> "See the in-app log for details"
+    }
+
+    private fun requirement(name: String): String = when {
+        name.startsWith("精确闹钟") -> "exact alarm"
+        name.startsWith("通知") -> "notifications"
+        name.startsWith("电池优化豁免") -> "battery optimization exemption"
+        name.startsWith("无障碍") -> "accessibility service"
+        name.startsWith("设备管理员") -> "device admin"
+        name.startsWith("未安装钉钉") -> "DingTalk not installed"
+        name.startsWith("请关闭密码") -> "secure lock screen must be removed"
+        else -> name
+    }
+}
+
 object ScheduleTime {
     fun next(now: ZonedDateTime, hour: Int, minute: Int): ZonedDateTime {
         require(hour in 0..23 && minute in 0..59)
