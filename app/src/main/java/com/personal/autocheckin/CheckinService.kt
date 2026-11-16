@@ -17,6 +17,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class CheckinService : Service() {
@@ -42,7 +45,8 @@ class CheckinService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val tracker = AttemptTracker()
+    private var tracker = AttemptTracker()
+    private var extraRound = false
     private var cpuLock: PowerManager.WakeLock? = null
     private var screenLock: PowerManager.WakeLock? = null
     private var finalized = false
@@ -75,6 +79,10 @@ class CheckinService : Service() {
         }
         started = true
         slot = PunchSlot.fromKey(intent?.getStringExtra("slot")) ?: PunchSlot.CLOCK_IN
+        val source = intent?.getStringExtra("source") ?: "unknown"
+        // The evening follow-up alarm runs exactly one round, not another four.
+        extraRound = source == "extra"
+        tracker = AttemptTracker(if (extraRound) 1 else RetryPlan.ROUNDS)
         try {
             val notification = notification("Preparing…", ongoing = true)
             if (Build.VERSION.SDK_INT >= 34) {
@@ -87,10 +95,11 @@ class CheckinService : Service() {
             settings.activeRun = runId
             keywords = settings.keywords
             clickConfig = settings.click
-            log("START", "来源=${intent?.getStringExtra("source") ?: "unknown"}；共 ${RetryPlan.ROUNDS} 轮，" +
+            log("START", if (extraRound) "来源=extra；追加 ${tracker.rounds} 轮，每轮 ${RetryPlan.WINDOW_MS / 1000} 秒"
+            else "来源=$source；共 ${tracker.rounds} 轮，" +
                 "每轮 ${RetryPlan.WINDOW_MS / 1000} 秒，每 ${RetryPlan.PERIOD_MS / 60_000} 分钟一轮，" +
                 "第 ${RetryPlan.ROUNDS_PER_BATCH} 轮后清理并重启钉钉")
-            val missing = Permissions.missing(this, requireExact = intent?.getStringExtra("source") == "alarm")
+            val missing = Permissions.missing(this, requireExact = source == "alarm")
             if (missing.isNotEmpty()) {
                 fail("缺少条件：${missing.joinToString("、")}")
                 return START_NOT_STICKY
@@ -131,8 +140,8 @@ class CheckinService : Service() {
         if (tracker.round > 1) acquireScreenLockForRound()
         observing = false
         roundStartedAt = SystemClock.uptimeMillis()
-        log("ATTEMPT", "第 ${tracker.round}/${RetryPlan.ROUNDS} 轮：请求唤醒并打开钉钉")
-        updateNotification("Round ${tracker.round}/${RetryPlan.ROUNDS}")
+        log("ATTEMPT", "第 ${tracker.round}/${tracker.rounds} 轮：请求唤醒并打开钉钉")
+        updateNotification("Round ${tracker.round}/${tracker.rounds}")
         handler.postDelayed({ onRoundWindowElapsed() }, RetryPlan.WINDOW_MS)
         val accessibility = CheckinAccessibilityService.connected
         if (accessibility == null) {
@@ -161,11 +170,14 @@ class CheckinService : Service() {
         if (finalized) return
         observing = false
         handler.removeCallbacksAndMessages(null)
-        log("TIMEOUT", "第 ${tracker.round}/${RetryPlan.ROUNDS} 轮（$kind）：$detail")
+        log("TIMEOUT", "第 ${tracker.round}/${tracker.rounds} 轮（$kind）：$detail")
+        val failedRound = tracker.round
         if (!tracker.roundFailed()) {
-            terminate(RunOutcome.UNCONFIRMED, "${RetryPlan.ROUNDS} 轮等待均未识别成功；请人工核对钉钉考勤记录")
+            terminate(RunOutcome.UNCONFIRMED, "全部 ${tracker.rounds} 轮等待均未识别成功；请人工核对钉钉考勤记录")
             return
         }
+        // Every failed round sends its own progress mail, so the inbox shows the attempts.
+        mailRoundProgress(failedRound, kind)
         updateNotification("Retrying…")
         val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
         if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1) {
@@ -177,10 +189,31 @@ class CheckinService : Service() {
         }
     }
 
+    /** Mail-only progress report for one failed round; the local log keeps its Chinese wording. */
+    private fun mailRoundProgress(round: Int, kind: String) {
+        val remaining = (roundStartedAt + RetryPlan.PERIOD_MS - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+        val nextAt = Instant.ofEpochMilli(System.currentTimeMillis() + remaining)
+            .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+        val reason = if (kind == "超时") "no confirmation within ${RetryPlan.WINDOW_MS / 1000} s"
+        else "wake-up or launch did not finish within ${WAKE_DEADLINE_MS / 1000} s"
+        val body = buildString {
+            appendLine("Run: $runId")
+            appendLine("Task: ${MailText.task(slot)}")
+            appendLine("Round: $round of ${tracker.rounds}")
+            appendLine("Result: no match")
+            appendLine("Reason: $reason")
+            appendLine("Next: round ${tracker.round} at $nextAt")
+            append("DingTalk: " + if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1)
+                "cleared and reopened before the next round" else "left open for the next round")
+        }
+        MailQueue.enqueue(this, "${MailText.task(slot)}: round $round of ${tracker.rounds}, no match",
+            body, "round-$runId-$round")
+    }
+
     private fun restartDingTalk() {
         if (finalized) return
         clearDingTalkBackground("第 ${RetryPlan.ROUNDS_PER_BATCH} 轮未确认，清理钉钉后台进程后重新启动")
-        updateNotification("Round ${tracker.round}/${RetryPlan.ROUNDS}")
+        updateNotification("Round ${tracker.round}/${tracker.rounds}")
         val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
         handler.postDelayed({ beginRound() }, (nextStart - SystemClock.uptimeMillis()).coerceAtLeast(0L))
     }
@@ -272,16 +305,28 @@ class CheckinService : Service() {
                 writeRecord("LOCK_ERROR", e.javaClass.simpleName)
             }
         }
+        val followUp = when {
+            // One single follow-up round for the evening slot when the four rounds end unconfirmed.
+            !extraRound && outcome == RunOutcome.UNCONFIRMED && slot == PunchSlot.CLOCK_OUT ->
+                AlarmScheduler.scheduleExtra(this, slot)
+            success || outcome == RunOutcome.CANCELLED -> { AlarmScheduler.cancelExtra(this, slot); null }
+            else -> null
+        }
         val mailBody = buildString {
             appendLine("Run: $runId")
             appendLine("Task: ${MailText.task(slot)}")
             appendLine("Result: ${MailText.result(outcome)}")
-            appendLine("Rounds: ${tracker.round} of ${RetryPlan.ROUNDS}")
+            appendLine("Rounds: ${tracker.round} of ${tracker.rounds}" + if (extraRound) " (follow-up)" else "")
             appendLine("Lock: $lockText")
             if (outcome == RunOutcome.ERROR) appendLine("Reason: ${MailText.reason(detail)}")
-            append("DingTalk background process: " +
+            if (followUp != null) appendLine("Follow-up: one more round at " + Instant.ofEpochMilli(followUp)
+                .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")))
+            appendLine("DingTalk background process: " +
                 if (cleanupDingTalk) "cleanup requested, see DINGTALK_KILL in the local log"
                 else "left running")
+            appendLine()
+            append("Note: only a matched on-screen confirmation counts as success; " +
+                "an unconfirmed result does not prove the task failed.")
         }
         MailQueue.enqueue(this, "${MailText.task(slot)}: ${MailText.result(outcome)}", mailBody, "result-$runId")
         SettingsStore(this).activeRun = null

@@ -238,7 +238,8 @@ class MotionService : Service(), SensorEventListener {
         settings.problem = message
         RunLog.write(this, null, "MOTION_ERROR", message)
         MailQueue.enqueue(this, "Sensor monitor error",
-            "Monitoring stopped and must be re-armed in the app.\nReason: ${message.take(160)}")
+            "Monitoring stopped and must be re-armed in the app.\n" +
+                "Reason: the motion sensors could not stay registered (details are in the local log).")
         stopGuard()
     }
 

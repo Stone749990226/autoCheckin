@@ -22,6 +22,8 @@ object RetryPlan {
     const val ROUNDS_PER_BATCH = 2
     const val WINDOW_MS = 150_000L
     const val PERIOD_MS = 180_000L
+    /** One follow-up single round for the evening slot, this long after its configured time. */
+    const val EXTRA_DELAY_MINUTES = 60L
     /** Four rounds end 11.5 minutes after the trigger; keep the other slot further out than that. */
     const val SLOT_GAP_MINUTES = 15
 }
@@ -93,6 +95,13 @@ object ScheduleTime {
     fun nextOccurrences(now: ZonedDateTime, schedules: List<PunchSchedule>): Map<PunchSlot, ZonedDateTime> =
         schedules.filter { it.enabled }.associate { it.slot to next(now, it.hour, it.minute) }
 
+    /** Follow-up slot time for today, or null when it is already too close to schedule. */
+    fun extraAt(now: ZonedDateTime, hour: Int, minute: Int, delayMinutes: Long): ZonedDateTime? {
+        require(hour in 0..23 && minute in 0..59)
+        val at = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0).plusMinutes(delayMinutes)
+        return if (at.isAfter(now.plusMinutes(3))) at else null
+    }
+
     // Four rounds take 11.5 minutes; require the other slot to start after that, otherwise its
     // alarm would arrive while this run is still alive and be discarded as a duplicate.
     fun hasConflict(schedules: List<PunchSchedule>): Boolean {
@@ -109,7 +118,8 @@ object ScheduleTime {
 enum class RunOutcome { RUNNING, SUCCESS, UNCONFIRMED, ERROR, CANCELLED }
 
 /** The only authority for round count and terminal state; callbacks cannot finish twice. */
-class AttemptTracker {
+class AttemptTracker(private val maxRounds: Int = RetryPlan.ROUNDS) {
+    val rounds: Int get() = maxRounds
     var round: Int = 1
         private set
     var outcome: RunOutcome = RunOutcome.RUNNING
@@ -118,7 +128,7 @@ class AttemptTracker {
     /** Records one failed round. Returns true when another round should start. */
     fun roundFailed(): Boolean {
         if (outcome != RunOutcome.RUNNING) return false
-        if (round >= RetryPlan.ROUNDS) {
+        if (round >= maxRounds) {
             outcome = RunOutcome.UNCONFIRMED
             return false
         }

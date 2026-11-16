@@ -10,8 +10,8 @@ android {
         applicationId = "com.personal.autocheckin"
         minSdk = 29
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.8"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
     compileOptions {

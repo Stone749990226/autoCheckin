@@ -93,6 +93,22 @@ class CoreTest {
         assertEquals(4, run.round)
     }
 
+    @Test fun followUpRoundRunsOnceAndNeverSchedulesItself() {
+        val extra = AttemptTracker(1)
+        assertEquals(1, extra.rounds)
+        assertFalse(extra.roundFailed())
+        assertEquals(RunOutcome.UNCONFIRMED, extra.outcome)
+        assertEquals(1, extra.round)
+    }
+
+    @Test fun followUpTimeIsOneHourAfterTheConfiguredSlot() {
+        val now = ZonedDateTime.parse("2026-11-16T17:41:30+08:00[Asia/Shanghai]")
+        val at = ScheduleTime.extraAt(now, 17, 30, RetryPlan.EXTRA_DELAY_MINUTES)
+        assertEquals("2026-11-16T18:30+08:00[Asia/Shanghai]", at.toString())
+        // Too late: the follow-up would be within three minutes of the current time.
+        assertNull(ScheduleTime.extraAt(ZonedDateTime.parse("2026-11-16T18:28:00+08:00[Asia/Shanghai]"), 17, 30, 60))
+    }
+
     @Test fun successOrCancellationMakesDuplicateCallbacksHarmless() {
         for (result in listOf(RunOutcome.SUCCESS, RunOutcome.CANCELLED, RunOutcome.ERROR)) {
             val run = AttemptTracker()
