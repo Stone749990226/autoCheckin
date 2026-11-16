@@ -72,6 +72,10 @@ ColorOS 12.1 上还需手动检查（具体菜单名称以实机为准）：
 
 完整流程共 **4 轮**、每 **3 分钟** 一轮、每轮观察 **150 秒**：第 1 轮在闹钟准点开始，第 2 轮在 3 分钟后；第 2 轮也失败后先按 HOME、等约 3 秒调用 `killBackgroundProcesses()` 清理钉钉后台进程，然后重新拉起钉钉进行第 3、4 轮。两轮之间只留 30 秒，屏幕保持点亮，避免每轮重新唤醒失败。识别到成功立即结束，不会等满窗口；4 轮都超时则记录未确认并结束。12 秒内未完成唤醒/启动算该轮失败，直接进入下一轮，不会中止整个任务（缺权限、无障碍断开等硬性失败仍立即结束）。
 
+**每轮都会发一封邮件**：每次尝试失败立即入队一封进度邮件（主题 `[Helper] Evening task: round 2 of 4, no match`，正文含轮次、原因、下一轮时间和钉钉处理方式），成功或第 4 轮失败时再发最终结果邮件，所以一次完整的失败任务最多产生 4 封邮件（3 封进度 + 1 封结果），成功时是「失败轮次数的进度邮件 + 1 封结果」。
+
+**下班卡追加一轮**：下班卡的 4 轮都未确认后，如果当前时间还没到「下班卡设定时间 + 60 分钟」（现在 17:30 → **18:30**），App 会登记一个一次性的精确闹钟，到点再单独跑 **1 轮** 150 秒；成功就按成功收尾，失败则记未确认并锁屏，不再追加。追加轮次在日志里标为 `EXTRA_ALARM` / `EXTRA_SCHEDULED`；成功或手动取消后会自动撤销该闹钟，避免已经打过卡又重复尝试。上班卡不追加。
+
 结束结果分为：
 
 - `SUCCESS`：本次观察到与配置匹配的成功文字，并非直接查询考勤服务器。
@@ -108,14 +112,15 @@ ColorOS 12.1 上还需手动检查（具体菜单名称以实机为准）：
 
 邮件只在产生事件且队列非空时请求网络任务，不维持 SMTP 长连接，也不定期唤醒发心跳。每轮发送最多处理 3 封，45 秒后关闭连接，失败后系统从 5 分钟起指数退避；锁屏不等待邮件。每封新入队邮件都记录当前电量；应用进程存活期间，以本次放电段的首封邮件为基线，按后续邮件样本的平均放电速度估算低于 10% 的时间。检测到正在充电或电量上升时重置基线；样本不足、间隔过短或结果异常时明确显示无法估算。此历史只存内存，重启后丢失，估算仅供参考。低电量通过系统电池广播触发，不启动轮询或额外常驻服务。
 
-## 显示名称与英文邮件（1.7）
+## 显示名称与英文邮件（1.7–1.8）
 
 1.7 起应用对外显示为 **Helper**：桌面/最近任务/应用管理里的名称、无障碍服务名、设备管理员名、通知标题都是 `Helper`，通知渠道为 `General` 和 `Background`，通知在锁屏上不显示内容（`VISIBILITY_SECRET`），唤醒页只显示 `Opening…`，图标换成记事本样式。日志与应用内界面仍为中文，方便自己排查。
 
-邮件全部是英文，主题统一前缀 `[Helper]`，正文不出现“打卡/考勤/钉钉”等字样：
+邮件全部是英文（主题和正文都不含中文），主题统一前缀 `[Helper]`，正文不出现“打卡/考勤/钉钉”等字样：
 
 | 场景 | 主题 |
 | --- | --- |
+| 单轮失败（进度） | `[Helper] Evening task: round 2 of 4, no match` |
 | 识别到成功 | `[Helper] Morning task: completed` / `[Helper] Evening task: completed` |
 | 4 轮未确认 | `[Helper] Evening task: needs review` |
 | 异常 / 取消 / 中断 | `… : error` / `… : cancelled` / `… : interrupted` |
@@ -137,9 +142,28 @@ Result: completed
 Rounds: 1 of 4
 Lock: screen locked
 DingTalk background process: cleanup requested, see DINGTALK_KILL in the local log
+
+Note: only a matched on-screen confirmation counts as success; an unconfirmed result does not prove the task failed.
 ```
 
-中文失败原因只在本地日志保留；邮件里由 `MailText` 转成英文（例如 `Missing requirement: accessibility service`），未登记的原因统一写 `See the in-app log for details`。`Message-ID` 与 `EHLO` 的域名改为 `sync.local`。
+轮次进度邮件（每轮失败各一封）：
+
+```
+Helper
+Time: 2026-11-16T17:33:00+08:00[Asia/Shanghai]
+Battery: 86%
+Below 10%: about 2026-11-17 02:58 (recent 70% / baseline 30%; estimate only)
+
+Run: 95feaf06
+Task: Evening task
+Round: 1 of 4
+Result: no match
+Reason: no confirmation within 150 s
+Next: round 2 at 17:33:00
+DingTalk: left open for the next round
+```
+
+未确认且登记了追加轮次时，结果邮件会多一行 `Follow-up: one more round at 18:30`。中文失败原因只在本地日志保留；邮件里由 `MailText` 转成英文（例如 `Missing requirement: accessibility service`），未登记的原因统一写 `See the in-app log for details`。`Message-ID` 与 `EHLO` 的域名改为 `sync.local`。
 
 ## QQ 邮件通知
 

@@ -10,7 +10,9 @@ import java.time.ZonedDateTime
 object AlarmScheduler {
     const val FULL_TEST_DELAY_MS = 5_000L
     private const val TEST_REQUEST_CODE_OFFSET = 1_000
+    private const val EXTRA_REQUEST_CODE_OFFSET = 2_000
     private const val TEST_ACTION = "com.personal.autocheckin.RUN_TEST"
+    private const val EXTRA_ACTION_PREFIX = "com.personal.autocheckin.RUN_EXTRA."
 
     private fun pending(context: Context, slot: PunchSlot, at: Long = 0) = PendingIntent.getBroadcast(
         context, slot.requestCode, Intent(context, AlarmReceiver::class.java)
@@ -18,6 +20,42 @@ object AlarmScheduler {
             .putExtra("slot", slot.key).putExtra("scheduledAt", at),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+
+    private fun extraPending(context: Context, slot: PunchSlot, at: Long = 0) = PendingIntent.getBroadcast(
+        context, slot.requestCode + EXTRA_REQUEST_CODE_OFFSET,
+        Intent(context, AlarmReceiver::class.java).setAction("$EXTRA_ACTION_PREFIX${slot.key}")
+            .putExtra("slot", slot.key).putExtra("scheduledAt", at),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /** One follow-up round for today, only when the four regular rounds ended unconfirmed. */
+    fun scheduleExtra(context: Context, slot: PunchSlot): Long? {
+        val settings = SettingsStore(context)
+        val config = settings.schedule(slot)
+        if (!settings.enabled || !config.enabled || !Permissions.exact(context)) return null
+        val at = ScheduleTime.extraAt(ZonedDateTime.now(), config.hour, config.minute, RetryPlan.EXTRA_DELAY_MINUTES)
+            ?: return null
+        val millis = at.toInstant().toEpochMilli()
+        return try {
+            val open = PendingIntent.getActivity(context, 101, Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            context.getSystemService(AlarmManager::class.java)
+                .setAlarmClock(AlarmManager.AlarmClockInfo(millis, open), extraPending(context, slot, millis))
+            RunLog.write(context, null, "EXTRA_SCHEDULED", "${slot.label}：追加轮次安排在 $at")
+            millis
+        } catch (e: SecurityException) {
+            RunLog.write(context, null, "EXTRA_ERROR", "${slot.label}：追加轮次安排失败：${e.javaClass.simpleName}")
+            null
+        }
+    }
+
+    fun cancelExtra(context: Context, slot: PunchSlot) {
+        val pending = PendingIntent.getBroadcast(context, slot.requestCode + EXTRA_REQUEST_CODE_OFFSET,
+            Intent(context, AlarmReceiver::class.java).setAction("$EXTRA_ACTION_PREFIX${slot.key}"),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
+        context.getSystemService(AlarmManager::class.java).cancel(pending)
+        pending.cancel()
+    }
 
     private fun testPending(context: Context, slot: PunchSlot) = PendingIntent.getBroadcast(
         context, slot.requestCode + TEST_REQUEST_CODE_OFFSET,
@@ -50,6 +88,7 @@ object AlarmScheduler {
 
     fun cancel(context: Context, slot: PunchSlot) {
         context.getSystemService(AlarmManager::class.java).cancel(pending(context, slot))
+        cancelExtra(context, slot)
         SettingsStore(context).setScheduledAt(slot, 0)
     }
 
@@ -111,6 +150,25 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         val settings = SettingsStore(context)
         val at = intent.getLongExtra("scheduledAt", 0)
+        if (intent.action?.startsWith("com.personal.autocheckin.RUN_EXTRA.") == true) {
+            // The follow-up round never reschedules itself; a stale one is dropped after the window.
+            if (!settings.enabled || !settings.schedule(slot).enabled) return
+            val delay = System.currentTimeMillis() - at
+            RunLog.write(context, null, "EXTRA_ALARM", "${slot.label}：追加轮次触发，偏差=${delay}ms")
+            if (at == 0L || delay !in 0..300_000L) {
+                RunLog.write(context, null, "EXTRA_MISSED", "${slot.label}：追加轮次偏差 ${delay / 1000} 秒，不补执行")
+                return
+            }
+            try {
+                context.startForegroundService(Intent(context, CheckinService::class.java)
+                    .putExtra("source", "extra").putExtra("slot", slot.key))
+            } catch (e: Exception) {
+                RunLog.write(context, null, "START_ERROR", "${slot.label}：追加轮次启动失败：${e.javaClass.simpleName}")
+                MailQueue.enqueue(context, "${MailText.task(slot)}: start failed",
+                    "The follow-up round could not start (${e.javaClass.simpleName}). Check background-run permissions.")
+            }
+            return
+        }
         if (!settings.enabled || !settings.schedule(slot).enabled || at == 0L || at != settings.scheduledAt(slot)) return
         // Advance only this slot. Morning completion must not consume the evening alarm.
         AlarmScheduler.schedule(context, slot)
