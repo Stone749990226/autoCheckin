@@ -24,10 +24,11 @@ class CheckinService : Service() {
         const val CHANNEL = "checkin_execution"
         const val ACTION_STOP = "com.personal.autocheckin.STOP"
         private const val NOTIFICATION_ID = 1
-        private const val ATTEMPT_TIMEOUT_MS = 120_000L
-        // CPU-only leak guard for two attempts plus launch handoff. The screen lock is
-        // separately renewed for exactly 120 seconds at the start of each attempt.
-        private const val CPU_LOCK_TIMEOUT_MS = 250_000L
+        // CPU-only leak guard for four rounds (11.5 minutes) plus launch handoff and cleanup.
+        // The screen lock is renewed separately at the start of every round.
+        private const val CPU_LOCK_TIMEOUT_MS = 800_000L
+        // No wake/launch within this window counts as a failed round rather than a hard error.
+        private const val WAKE_DEADLINE_MS = 12_000L
         // Give the server acknowledgement a moment before clearing DingTalk's background process.
         private const val DINGTALK_KILL_DELAY_MS = 3_000L
         var current: CheckinService? = null
@@ -48,7 +49,7 @@ class CheckinService : Service() {
     private var wakeRequested = false
     private var started = false
     private var observing = false
-    private var attemptStartedAt = 0L
+    private var roundStartedAt = 0L
     private var launchedAt = 0L
     private lateinit var keywords: List<String>
     private lateinit var clickConfig: ClickConfig
@@ -86,14 +87,16 @@ class CheckinService : Service() {
             settings.activeRun = runId
             keywords = settings.keywords
             clickConfig = settings.click
-            log("START", "来源=${intent?.getStringExtra("source") ?: "unknown"}；最多两次，每次 120 秒")
+            log("START", "来源=${intent?.getStringExtra("source") ?: "unknown"}；共 ${RetryPlan.ROUNDS} 轮，" +
+                "每轮 ${RetryPlan.WINDOW_MS / 1000} 秒，每 ${RetryPlan.PERIOD_MS / 60_000} 分钟一轮，" +
+                "第 ${RetryPlan.ROUNDS_PER_BATCH} 轮后清理并重启钉钉")
             val missing = Permissions.missing(this, requireExact = intent?.getStringExtra("source") == "alarm")
             if (missing.isNotEmpty()) {
                 fail("缺少条件：${missing.joinToString("、")}")
                 return START_NOT_STICKY
             }
             acquireLocks()
-            beginAttempt()
+            beginRound()
         } catch (e: Exception) {
             fail("启动异常：${e.javaClass.simpleName}")
         }
@@ -113,32 +116,24 @@ class CheckinService : Service() {
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "$packageName:screen",
         ).apply { setReferenceCounted(false) }
-        acquireScreenLockForAttempt()
+        acquireScreenLockForRound()
     }
 
-    private fun acquireScreenLockForAttempt() {
+    private fun acquireScreenLockForRound() {
         screenLock?.let { lock ->
             if (lock.isHeld) lock.release()
-            lock.acquire(ATTEMPT_TIMEOUT_MS)
+            lock.acquire(RetryPlan.PERIOD_MS + 10_000L)
         }
     }
 
-    private fun beginAttempt() {
+    private fun beginRound() {
         if (finalized) return
-        if (tracker.attempt > 1) acquireScreenLockForAttempt()
+        if (tracker.round > 1) acquireScreenLockForRound()
         observing = false
-        attemptStartedAt = SystemClock.uptimeMillis()
-        log("ATTEMPT", "第 ${tracker.attempt} 次：请求唤醒并打开钉钉")
-        updateNotification("第 ${tracker.attempt}/2 次，等待打卡结果")
-        handler.postDelayed({
-            if (!finalized) {
-                observing = false
-                handler.removeCallbacksAndMessages(null)
-                log("TIMEOUT", "第 ${tracker.attempt} 次 120 秒内未识别到成功")
-                if (tracker.timeout()) beginAttempt()
-                else terminate(RunOutcome.UNCONFIRMED, "两次等待均未识别成功；请人工核对钉钉考勤记录")
-            }
-        }, ATTEMPT_TIMEOUT_MS)
+        roundStartedAt = SystemClock.uptimeMillis()
+        log("ATTEMPT", "第 ${tracker.round}/${RetryPlan.ROUNDS} 轮：请求唤醒并打开钉钉")
+        updateNotification("第 ${tracker.round}/${RetryPlan.ROUNDS} 轮，等待打卡结果")
+        handler.postDelayed({ onRoundWindowElapsed() }, RetryPlan.WINDOW_MS)
         val accessibility = CheckinAccessibilityService.connected
         if (accessibility == null) {
             fail("无障碍服务未连接")
@@ -149,10 +144,52 @@ class CheckinService : Service() {
             wakeRequested = true
             accessibility.wake(runId)
             handler.postDelayed({
-                if (!finalized && !observing) fail("12 秒内未完成唤醒/解锁/启动，请检查系统后台弹出界面限制")
-            }, 12_000L)
+                // A stuck wake/launch is retried like a timeout instead of aborting the whole run.
+                if (!finalized && !observing) failRound("唤醒或启动超时", "12 秒内未完成唤醒/解锁/启动，请检查系统后台弹出界面限制")
+            }, WAKE_DEADLINE_MS)
         } catch (e: Exception) {
             fail("后台唤醒失败：${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun onRoundWindowElapsed() {
+        if (finalized) return
+        failRound("超时", "${RetryPlan.WINDOW_MS / 1000} 秒内未识别到成功")
+    }
+
+    private fun failRound(kind: String, detail: String) {
+        if (finalized) return
+        observing = false
+        handler.removeCallbacksAndMessages(null)
+        log("TIMEOUT", "第 ${tracker.round}/${RetryPlan.ROUNDS} 轮（$kind）：$detail")
+        if (!tracker.roundFailed()) {
+            terminate(RunOutcome.UNCONFIRMED, "${RetryPlan.ROUNDS} 轮等待均未识别成功；请人工核对钉钉考勤记录")
+            return
+        }
+        updateNotification("第 ${tracker.round - 1}/${RetryPlan.ROUNDS} 轮未确认，准备第 ${tracker.round} 轮")
+        val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
+        if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1) {
+            // Batch boundary: DingTalk is sent home first so it can be cleared, then relaunched.
+            goHome()
+            handler.postDelayed({ restartDingTalk() }, DINGTALK_KILL_DELAY_MS)
+        } else {
+            handler.postDelayed({ beginRound() }, (nextStart - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+        }
+    }
+
+    private fun restartDingTalk() {
+        if (finalized) return
+        clearDingTalkBackground("第 ${RetryPlan.ROUNDS_PER_BATCH} 轮未确认，清理钉钉后台进程后重新启动")
+        updateNotification("正在重新启动钉钉（第 ${tracker.round}/${RetryPlan.ROUNDS} 轮）")
+        val nextStart = roundStartedAt + RetryPlan.PERIOD_MS
+        handler.postDelayed({ beginRound() }, (nextStart - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+    }
+
+    private fun goHome() {
+        try {
+            CheckinAccessibilityService.connected?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        } catch (_: Exception) {
+            // Best effort; the batch cleanup below still runs.
         }
     }
 
@@ -182,7 +219,7 @@ class CheckinService : Service() {
     }
 
     fun acceptsEvent(eventTime: Long): Boolean = !finalized && observing &&
-        eventTime >= launchedAt && eventTime >= attemptStartedAt
+        eventTime >= launchedAt && eventTime >= roundStartedAt
 
     fun observe(text: String, source: String) {
         if (finalized || !observing) return
@@ -213,13 +250,12 @@ class CheckinService : Service() {
         CheckinAccessibilityService.connected?.setObservationEnabled(false)
         val logged = writeRecord(outcome.name, detail)
         val success = outcome == RunOutcome.SUCCESS
+        // Both a success and a fully failed run leave DingTalk open; clear it to save standby power.
+        val cleanupDingTalk = success || outcome == RunOutcome.UNCONFIRMED
         WakeActivity.finishRun(runId)
         releaseLocks()
         // killBackgroundProcesses ignores a foreground app, so send DingTalk home first.
-        if (success) {
-            try { CheckinAccessibilityService.connected?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) }
-            catch (_: Exception) { /* Cleanup below is best effort. */ }
-        }
+        if (cleanupDingTalk) goHome()
         var lockResult = "本次未主动锁屏"
         if (lock && wakeRequested) {
             try {
@@ -244,16 +280,16 @@ class CheckinService : Service() {
             else -> "任务已结束"
         }
         MailQueue.enqueue(this, "${slot.label} · $summary", "运行 ID：$runId\n任务：${slot.label}\n结果：$summary\n详情：$detail\n锁屏：$lockResult" +
-            (if (success) "\n钉钉后台进程：已尝试清理，结果见本地日志 DINGTALK_KILL" else ""), "result-$runId")
+            (if (cleanupDingTalk) "\n钉钉后台进程：已尝试清理，结果见本地日志 DINGTALK_KILL" else ""), "result-$runId")
         SettingsStore(this).activeRun = null
         try {
             getSystemService(NotificationManager::class.java).notify(2,
                 notification(if (logged) summary else "$summary；日志写入失败", ongoing = false))
         } catch (_: SecurityException) { /* Permission may have been revoked mid-run. */ }
-        if (success) {
+        if (cleanupDingTalk) {
             // Keep the service alive briefly so the delayed cleanup survives process teardown.
             handler.postDelayed({
-                clearDingTalkBackground()
+                clearDingTalkBackground(if (success) "打卡成功后清理" else "全部轮次未确认后清理")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }, DINGTALK_KILL_DELAY_MS)
@@ -267,12 +303,12 @@ class CheckinService : Service() {
      * Best effort only: without root a normal app can clear another package's background
      * processes but cannot force-stop it. DingTalk foreground services may survive.
      */
-    private fun clearDingTalkBackground() {
+    private fun clearDingTalkBackground(reason: String) {
         try {
             getSystemService(ActivityManager::class.java).killBackgroundProcesses(Permissions.DINGTALK)
-            writeRecord("DINGTALK_KILL", "已请求清理钉钉后台进程；系统可能保留其前台服务或推送进程")
+            writeRecord("DINGTALK_KILL", "$reason；已请求清理钉钉后台进程，系统可能保留其前台服务或推送进程")
         } catch (e: Exception) {
-            writeRecord("DINGTALK_KILL_ERROR", "清理钉钉后台进程失败：${e.javaClass.simpleName}")
+            writeRecord("DINGTALK_KILL_ERROR", "$reason；清理钉钉后台进程失败：${e.javaClass.simpleName}")
         }
     }
 

@@ -53,7 +53,7 @@
         <service android:name=".CheckinService" android:exported="false"
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="User scheduled personal attendance: wake device, observe DingTalk accessibility confirmation for up to two 120-second attempts, then log and lock." />
+                android:value="User scheduled personal attendance: wake device, observe DingTalk accessibility confirmation for up to four 150-second rounds at a three-minute cadence, restart DingTalk after the second round, then log and lock." />
         </service>
         <service android:name=".CheckinAccessibilityService" android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

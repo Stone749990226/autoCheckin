@@ -15,6 +15,17 @@ data class PunchSchedule(val slot: PunchSlot, val enabled: Boolean, val hour: In
     init { require(hour in 0..23 && minute in 0..59) }
 }
 
+/** Fixed retry cadence: four rounds of 150 seconds, one round every three minutes. */
+object RetryPlan {
+    const val ROUNDS = 4
+    /** Round 1 and 2 run back to back; DingTalk is cleared and relaunched for rounds 3 and 4. */
+    const val ROUNDS_PER_BATCH = 2
+    const val WINDOW_MS = 150_000L
+    const val PERIOD_MS = 180_000L
+    /** Four rounds end 11.5 minutes after the trigger; keep the other slot further out than that. */
+    const val SLOT_GAP_MINUTES = 15
+}
+
 object ScheduleTime {
     fun next(now: ZonedDateTime, hour: Int, minute: Int): ZonedDateTime {
         require(hour in 0..23 && minute in 0..59)
@@ -25,14 +36,14 @@ object ScheduleTime {
     fun nextOccurrences(now: ZonedDateTime, schedules: List<PunchSchedule>): Map<PunchSlot, ZonedDateTime> =
         schedules.filter { it.enabled }.associate { it.slot to next(now, it.hour, it.minute) }
 
-    // Two 120-second attempts take four minutes; require a fifth minute for cleanup,
-    // including across midnight, so a second alarm is never discarded as a duplicate.
+    // Four rounds take 11.5 minutes; require the other slot to start after that, otherwise its
+    // alarm would arrive while this run is still alive and be discarded as a duplicate.
     fun hasConflict(schedules: List<PunchSchedule>): Boolean {
         val minutes = schedules.filter { it.enabled }.map { it.hour * 60 + it.minute }
         return minutes.indices.any { first ->
             (first + 1 until minutes.size).any { second ->
                 val gap = kotlin.math.abs(minutes[first] - minutes[second])
-                minOf(gap, 1440 - gap) < 5
+                minOf(gap, 1440 - gap) < RetryPlan.SLOT_GAP_MINUTES
             }
         }
     }
@@ -40,21 +51,22 @@ object ScheduleTime {
 
 enum class RunOutcome { RUNNING, SUCCESS, UNCONFIRMED, ERROR, CANCELLED }
 
-/** The only authority for attempt count and terminal state; callbacks cannot finish twice. */
+/** The only authority for round count and terminal state; callbacks cannot finish twice. */
 class AttemptTracker {
-    var attempt: Int = 1
+    var round: Int = 1
         private set
     var outcome: RunOutcome = RunOutcome.RUNNING
         private set
 
-    fun timeout(): Boolean {
+    /** Records one failed round. Returns true when another round should start. */
+    fun roundFailed(): Boolean {
         if (outcome != RunOutcome.RUNNING) return false
-        if (attempt == 1) {
-            attempt = 2
-            return true
+        if (round >= RetryPlan.ROUNDS) {
+            outcome = RunOutcome.UNCONFIRMED
+            return false
         }
-        outcome = RunOutcome.UNCONFIRMED
-        return false
+        round++
+        return true
     }
 
     fun finish(result: RunOutcome): Boolean {

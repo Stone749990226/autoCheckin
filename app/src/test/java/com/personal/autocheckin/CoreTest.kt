@@ -27,23 +27,32 @@ class CoreTest {
         assertEquals(original[PunchSlot.CLOCK_OUT], disabled[PunchSlot.CLOCK_OUT])
     }
 
-    @Test fun enforcesFiveMinuteRoomForTwoAttemptsIncludingAcrossMidnight() {
+    @Test fun enforcesFifteenMinuteGapForFourRoundsIncludingAcrossMidnight() {
         assertFalse(ScheduleTime.hasConflict(shifts))
         assertTrue(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 30))))
-        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 34))))
-        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 35))))
-        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 3))))
-        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 59), shifts[1].copy(hour = 0, minute = 4))))
+        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 44))))
+        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(hour = 8, minute = 45))))
+        assertTrue(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 50), shifts[1].copy(hour = 0, minute = 3))))
+        assertFalse(ScheduleTime.hasConflict(listOf(shifts[0].copy(hour = 23, minute = 50), shifts[1].copy(hour = 0, minute = 5))))
         assertFalse(ScheduleTime.hasConflict(listOf(shifts[0], shifts[1].copy(enabled = false, hour = 8, minute = 30))))
     }
 
-    @Test fun morningSuccessDoesNotCompleteOrConsumeEveningAttempts() {
+    @Test fun retryPlanFitsInsideTheSlotGap() {
+        assertEquals(4, RetryPlan.ROUNDS)
+        assertEquals(2, RetryPlan.ROUNDS_PER_BATCH)
+        assertTrue(RetryPlan.WINDOW_MS < RetryPlan.PERIOD_MS)
+        val spanMs = RetryPlan.PERIOD_MS * (RetryPlan.ROUNDS - 1) + RetryPlan.WINDOW_MS
+        assertEquals(690_000L, spanMs)
+        assertTrue(spanMs < RetryPlan.SLOT_GAP_MINUTES * 60_000L)
+    }
+
+    @Test fun morningSuccessDoesNotCompleteOrConsumeEveningRounds() {
         val morning = AttemptTracker()
         morning.finish(RunOutcome.SUCCESS)
         val evening = AttemptTracker()
         assertEquals(RunOutcome.RUNNING, evening.outcome)
-        assertEquals(1, evening.attempt)
-        assertTrue(evening.timeout())
+        assertEquals(1, evening.round)
+        assertTrue(evening.roundFailed())
         assertTrue(evening.finish(RunOutcome.SUCCESS))
     }
 
@@ -71,15 +80,17 @@ class CoreTest {
         assertEquals("2026-03-08T08:30-04:00[America/New_York]", ScheduleTime.next(dst, 8, 30).toString())
     }
 
-    @Test fun timeoutRetriesExactlyOnceAndCannotLaterTurnIntoSuccess() {
+    @Test fun fourFailedRoundsEndUnconfirmedAndNoFifthRoundRuns() {
         val run = AttemptTracker()
-        assertTrue(run.timeout())
-        assertEquals(2, run.attempt)
-        assertFalse(run.timeout())
+        assertEquals(1, run.round)
+        assertTrue(run.roundFailed()); assertEquals(2, run.round)
+        assertTrue(run.roundFailed()); assertEquals(3, run.round)
+        assertTrue(run.roundFailed()); assertEquals(4, run.round)
+        assertFalse(run.roundFailed())
         assertEquals(RunOutcome.UNCONFIRMED, run.outcome)
-        assertFalse(run.timeout())
+        assertFalse(run.roundFailed())
         assertFalse(run.finish(RunOutcome.SUCCESS))
-        assertEquals(2, run.attempt)
+        assertEquals(4, run.round)
     }
 
     @Test fun successOrCancellationMakesDuplicateCallbacksHarmless() {
@@ -87,9 +98,9 @@ class CoreTest {
             val run = AttemptTracker()
             assertTrue(run.finish(result))
             assertFalse(run.finish(RunOutcome.SUCCESS))
-            assertFalse(run.timeout())
+            assertFalse(run.roundFailed())
             assertEquals(result, run.outcome)
-            assertEquals(1, run.attempt)
+            assertEquals(1, run.round)
         }
     }
 
