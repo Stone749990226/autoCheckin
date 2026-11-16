@@ -89,7 +89,8 @@ object AlarmScheduler {
         } catch (e: SecurityException) {
             cancel(context, slot)
             RunLog.write(context, null, "SCHEDULE_ERROR", "${slot.label}：${e.javaClass.simpleName}")
-            MailQueue.enqueue(context, "${slot.label}调度失败", "精确闹钟调度失败，请检查权限。")
+            MailQueue.enqueue(context, "${MailText.task(slot)}: schedule failed",
+                "The exact alarm could not be scheduled. Check the alarm permission and schedule settings.")
             false
         }
     }
@@ -117,7 +118,8 @@ class AlarmReceiver : BroadcastReceiver() {
         RunLog.write(context, null, "ALARM", "${slot.label}：计划时间=$at；触发偏差=${delay}ms")
         if (delay !in 0..300_000L) {
             RunLog.write(context, null, "MISSED", "${slot.label}：闹钟偏差 ${delay / 1000} 秒，超过 5 分钟窗口，不补执行")
-            MailQueue.enqueue(context, "${slot.label}任务错过", "闹钟偏差 ${delay / 1000} 秒，超过执行窗口，未补执行，请人工核对。")
+            MailQueue.enqueue(context, "${MailText.task(slot)}: missed",
+                "The alarm fired ${delay / 1000} s late, outside the execution window, so this task was skipped. Verify manually.")
             return
         }
         try {
@@ -125,7 +127,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 .putExtra("source", "alarm").putExtra("slot", slot.key))
         } catch (e: Exception) {
             RunLog.write(context, null, "START_ERROR", "${slot.label}：前台服务启动失败：${e.javaClass.simpleName}")
-            MailQueue.enqueue(context, "${slot.label}无法启动", "前台服务启动失败：${e.javaClass.simpleName}，请检查后台运行设置。")
+            MailQueue.enqueue(context, "${MailText.task(slot)}: start failed",
+                "The foreground service could not start (${e.javaClass.simpleName}). Check background-run permissions.")
         }
     }
 }

@@ -18,7 +18,7 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:label="自动打卡助手"
+        android:label="Helper"
         android:icon="@drawable/ic_checkin"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -57,14 +57,14 @@
         </service>
         <service android:name=".CheckinAccessibilityService" android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:label="自动打卡助手">
+            android:label="Helper">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service" />
         </service>
         <receiver android:name=".CheckinAdminReceiver" android:exported="true"
-            android:permission="android.permission.BIND_DEVICE_ADMIN" android:label="自动打卡助手锁屏">
+            android:permission="android.permission.BIND_DEVICE_ADMIN" android:label="Helper">
             <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />

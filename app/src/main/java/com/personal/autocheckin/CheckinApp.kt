@@ -14,7 +14,9 @@ class CheckinApp : Application() {
         AlarmScheduler.cancelLegacy(this)
         settings.activeRun?.let {
             RunLog.write(this, it, "INTERRUPTED", "${settings.activeRunLabel}：上次运行因进程终止而中断，结果未确认；不补执行")
-            MailQueue.enqueue(this, "${settings.activeRunLabel}运行中断", "运行 ID：$it\n上次任务被中断，结果未确认。这是重新启动应用后检测到的中断，无法确定中断原因和准确时间。", "interrupted-$it")
+            MailQueue.enqueue(this, "${MailText.task(settings.activeRunLabel)}: interrupted",
+                "Run: $it\nTask: ${MailText.task(settings.activeRunLabel)}\nResult: interrupted\n" +
+                    "Note: the previous run ended with the process; the outcome is unconfirmed.", "interrupted-$it")
             settings.activeRun = null
         }
         CheckinService.createChannel(this)

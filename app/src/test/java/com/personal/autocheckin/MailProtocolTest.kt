@@ -14,7 +14,7 @@ class MailProtocolTest {
         assertFalse(message.contains("\r\nBcc:"))
         assertFalse(message.contains("\r\n.\r\n"))
         assertEquals(body, Base64.getMimeDecoder().decode(message.substringAfter("\r\n\r\n").trim()).toString(Charsets.UTF_8))
-        assertTrue(message.contains("Message-ID: <test-123@autocheckin.local>"))
+        assertTrue(message.contains("Message-ID: <test-123@sync.local>"))
     }
 
     @Test fun addressesRejectNewlinesAndMultipleRecipients() {
@@ -29,7 +29,7 @@ class MailProtocolTest {
         val output = StringWriter()
         MailProtocol.exchange(StringReader(replies).buffered(), output.buffered(), "test@qq.com", "target@qq.com", "dummy-credential", "body\r\n")
         val transcript = output.toString()
-        assertTrue(transcript.startsWith("EHLO autocheckin.local\r\nAUTH LOGIN\r\n"))
+        assertTrue(transcript.startsWith("EHLO sync.local\r\nAUTH LOGIN\r\n"))
         assertTrue(transcript.contains("RCPT TO:<target@qq.com>\r\nDATA\r\nbody\r\n.\r\nQUIT\r\n"))
     }
 
@@ -64,22 +64,22 @@ class MailProtocolTest {
         val zone = ZoneId.of("Asia/Shanghai")
         val start = 1_800_000_000_000L
 
-        assertTrue(estimator.observe(80, false, start, zone).text.contains("样本不足"))
+        assertTrue(estimator.observe(80, false, start, zone).text.contains("insufficient samples"))
         val estimate = estimator.observe(70, false, start + 2 * 60 * 60_000L, zone).text
-        assertTrue(estimate.contains("放电基线"))
-        assertTrue(estimate.contains("预计低于 10%：约"))
+        assertTrue(estimate.contains("Baseline:"))
+        assertTrue(estimate.contains("Below 10%: about"))
 
-        assertTrue(estimator.observe(75, false, start + 3 * 60 * 60_000L, zone).text.contains("电量上升"))
-        assertTrue(estimator.observe(90, true, start + 4 * 60 * 60_000L, zone).text.contains("正在充电"))
-        assertTrue(estimator.observe(89, false, start + 5 * 60 * 60_000L, zone).text.contains("充电结束"))
+        assertTrue(estimator.observe(75, false, start + 3 * 60 * 60_000L, zone).text.contains("battery rising"))
+        assertTrue(estimator.observe(90, true, start + 4 * 60 * 60_000L, zone).text.contains("charging, baseline reset"))
+        assertTrue(estimator.observe(89, false, start + 5 * 60 * 60_000L, zone).text.contains("charging ended, new baseline"))
     }
 
     @Test fun invalidOrShortBatterySamplesDoNotProduceAnEstimate() {
         val estimator = BatteryDischargeEstimator()
         val zone = ZoneId.of("Asia/Shanghai")
-        assertTrue(estimator.observe(-1, false, 1000, zone).text.contains("系统未返回有效电量"))
+        assertTrue(estimator.observe(-1, false, 1000, zone).text.contains("no valid reading"))
         estimator.observe(60, false, 2000, zone)
-        assertTrue(estimator.observe(59, false, 2000 + 5 * 60_000L, zone).text.contains("间隔不足"))
+        assertTrue(estimator.observe(59, false, 2000 + 5 * 60_000L, zone).text.contains("sample interval too short"))
     }
 
     @Test fun batteryEstimateWeightsRecentDischargeAndUsesConservativeLowBatteryFactor() {
@@ -89,10 +89,10 @@ class MailProtocolTest {
         estimator.observe(80, false, start, zone)
         estimator.observe(70, false, start + 60 * 60_000L, zone)
         val normal = estimator.observe(60, false, start + 2 * 60 * 60_000L, zone).text
-        assertTrue(normal.contains("近期样本权重 70%"))
+        assertTrue(normal.contains("recent 70% / baseline 30%"))
         estimator.observe(25, false, start + 3 * 60 * 60_000L, zone)
         val low = estimator.observe(20, false, start + 4 * 60 * 60_000L, zone).text
-        assertTrue(low.contains("低电量保守修正 ×1.35"))
+        assertTrue(low.contains("low-battery factor x1.35"))
     }
 
     @Test fun lowBatteryAlertsOncePerDischargeAndNeverWhileCharging() {

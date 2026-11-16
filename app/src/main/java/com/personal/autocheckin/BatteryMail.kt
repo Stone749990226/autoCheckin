@@ -20,8 +20,9 @@ class BatteryMail : BroadcastReceiver() {
         val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
         val systemLow = intent.action == Intent.ACTION_BATTERY_LOW && percent < 0 && !settings.batteryReported
         if (systemLow || MailPolicy.lowBatteryAlert(percent, plugged, settings.batteryReported)) {
-            val detail = if (percent >= 0) "手机剩余电量 $percent%，未连接电源。请及时充电，避免上下班任务无法执行。" else "系统报告手机低电量，请及时充电。"
-            if (MailQueue.enqueue(context, "手机低电量", detail)) settings.batteryReported = true
+            val detail = if (percent >= 0) "Battery: $percent%, not charging\nCharge soon so scheduled tasks can still run."
+                else "The system reported low battery.\nCharge soon so scheduled tasks can still run."
+            if (MailQueue.enqueue(context, "Battery low", detail)) settings.batteryReported = true
         }
     }
 }

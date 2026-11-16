@@ -118,7 +118,7 @@ class MainActivity : Activity() {
         }
         button(R.id.vendor_power) {
             AlertDialog.Builder(this).setTitle("厂商后台 / 启动管理")
-                .setMessage("Android 的“电池优化豁免”只检测标准 Doze 豁免，不能检测华为/荣耀等厂商私有的启动管理。\n\n荣耀/华为：设置 → 电池 → 应用启动管理 → 找到自动打卡助手 → 关闭“自动管理”，开启“允许自启动”“允许关联启动”“允许后台活动”。\n\n建议同时在最近任务中锁定本应用。小米、OPPO 等设备的菜单名称可能不同，请在电池/自启动/后台活动中放行本应用。\n\n设置完成后请使用“测试完整流程”：点击开始，5 秒内手动灭屏，观察是否自动亮屏并打开钉钉。")
+                .setMessage("Android 的“电池优化豁免”只检测标准 Doze 豁免，不能检测华为/荣耀等厂商私有的启动管理。\n\n荣耀/华为：设置 → 电池 → 应用启动管理 → 找到 Helper → 关闭“自动管理”，开启“允许自启动”“允许关联启动”“允许后台活动”。\n\n建议同时在最近任务中锁定本应用。小米、OPPO 等设备的菜单名称可能不同，请在电池/自启动/后台活动中放行本应用。\n\n设置完成后请使用“测试完整流程”：点击开始，5 秒内手动灭屏，观察是否自动亮屏并打开钉钉。")
                 .setPositiveButton("打开应用详情") { _, _ ->
                     openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri()))
                 }.setNegativeButton("知道了", null).show()

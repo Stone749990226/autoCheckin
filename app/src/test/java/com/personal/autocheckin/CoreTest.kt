@@ -115,6 +115,21 @@ class CoreTest {
         assertNull(SuccessMatcher.match("任何文字", listOf("")))
     }
 
+    @Test fun mailTextIsEnglishWhileLogsKeepTheirChineseReasons() {
+        assertEquals("Helper", MailText.APP)
+        assertEquals("Morning task", MailText.task(PunchSlot.CLOCK_IN))
+        assertEquals("Evening task", MailText.task(PunchSlot.CLOCK_OUT))
+        assertEquals("Morning task", MailText.task("上班卡"))
+        assertEquals("completed", MailText.result(RunOutcome.SUCCESS))
+        assertEquals("needs review", MailText.result(RunOutcome.UNCONFIRMED))
+        assertEquals("Error", MailText.headline(RunOutcome.ERROR))
+        assertEquals("Missing requirement: accessibility service, device admin",
+            MailText.reason("缺少条件：无障碍服务未连接、设备管理员"))
+        assertEquals("Wake-up failed: SecurityException", MailText.reason("后台唤醒失败：SecurityException"))
+        assertEquals("DingTalk launch entry not found", MailText.reason("找不到钉钉启动入口"))
+        assertEquals("See the in-app log for details", MailText.reason("某个未知原因"))
+    }
+
     @Test fun coordinateClickRequiresMatchingScreenAndInBoundsPoint() {
         val click = ClickConfig(coordinateEnabled = true, x = 500, y = 900, width = 1080, height = 2400, rotation = 0)
         assertTrue(click.coordinatesValidFor(1080, 2400, 0))

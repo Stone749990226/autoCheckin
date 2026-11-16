@@ -101,7 +101,7 @@ class MotionActivity : Activity() {
         if (MotionService.significant(manager) == null && MotionService.tilt(manager) == null) add("没有低功耗唤醒运动传感器")
         if (!Permissions.exact(this@MotionActivity)) add("请在主界面授权精确闹钟（用于灭屏后布防和恢复）")
         if (!Permissions.notifications(this@MotionActivity)) add("请在主界面开启通知权限")
-        if (getSystemService(NotificationManager::class.java).getNotificationChannel(MotionService.CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) add("请开启系统中的“防移动监测”通知渠道")
+        if (getSystemService(NotificationManager::class.java).getNotificationChannel(MotionService.CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) add("请开启系统中的“Background”通知渠道")
         if (!Permissions.battery(this@MotionActivity)) add("请在主界面开启电池优化豁免")
         val mail = MailSettings(this@MotionActivity)
         if (!mail.enabled || !mail.hasSecret || mail.blocked) add("请先配置并启用邮件通知，确保测试邮件能够收到")
