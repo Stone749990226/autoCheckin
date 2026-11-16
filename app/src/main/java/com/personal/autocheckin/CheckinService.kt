@@ -203,7 +203,7 @@ class CheckinService : Service() {
             appendLine("Result: no match")
             appendLine("Reason: $reason")
             appendLine("Next: round ${tracker.round} at $nextAt")
-            append("DingTalk: " + if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1)
+            append("Target app: " + if (tracker.round == RetryPlan.ROUNDS_PER_BATCH + 1)
                 "cleared and reopened before the next round" else "left open for the next round")
         }
         MailQueue.enqueue(this, "${MailText.task(slot)}: round $round of ${tracker.rounds}, no match",
@@ -321,8 +321,8 @@ class CheckinService : Service() {
             if (outcome == RunOutcome.ERROR) appendLine("Reason: ${MailText.reason(detail)}")
             if (followUp != null) appendLine("Follow-up: one more round at " + Instant.ofEpochMilli(followUp)
                 .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")))
-            appendLine("DingTalk background process: " +
-                if (cleanupDingTalk) "cleanup requested, see DINGTALK_KILL in the local log"
+            appendLine("Target app background process: " +
+                if (cleanupDingTalk) "cleanup requested, see the local log"
                 else "left running")
             appendLine()
             append("Note: only a matched on-screen confirmation counts as success; " +

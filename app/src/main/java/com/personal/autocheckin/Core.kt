@@ -59,9 +59,9 @@ object MailText {
             detail.removePrefix("缺少条件：").split("、").joinToString(", ") { requirement(it) }
         detail.startsWith("后台唤醒失败：") -> "Wake-up failed: " + detail.substringAfter("：")
         detail.startsWith("启动异常：") -> "Startup failed: " + detail.substringAfter("：")
-        detail.startsWith("启动钉钉失败：") -> "Could not open DingTalk: " + detail.substringAfter("：")
+        detail.startsWith("启动钉钉失败：") -> "Could not open the target app: " + detail.substringAfter("：")
         detail.startsWith("执行点击时") -> "Accessibility service disconnected before the configured click"
-        detail == "找不到钉钉启动入口" -> "DingTalk launch entry not found"
+        detail == "找不到钉钉启动入口" -> "Target app launch entry not found"
         detail == "无障碍服务未连接" -> "Accessibility service not connected"
         detail == "检测到安全锁屏，无法自动解锁" -> "Secure lock screen detected, cannot unlock automatically"
         detail == "系统拒绝解除无密码锁屏" -> "System refused to dismiss the swipe lock"
@@ -79,7 +79,7 @@ object MailText {
         name.startsWith("电池优化豁免") -> "battery optimization exemption"
         name.startsWith("无障碍") -> "accessibility service"
         name.startsWith("设备管理员") -> "device admin"
-        name.startsWith("未安装钉钉") -> "DingTalk not installed"
+        name.startsWith("未安装钉钉") -> "Target app not installed"
         name.startsWith("请关闭密码") -> "secure lock screen must be removed"
         else -> name
     }

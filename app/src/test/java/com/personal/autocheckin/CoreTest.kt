@@ -142,7 +142,7 @@ class CoreTest {
         assertEquals("Missing requirement: accessibility service, device admin",
             MailText.reason("缺少条件：无障碍服务未连接、设备管理员"))
         assertEquals("Wake-up failed: SecurityException", MailText.reason("后台唤醒失败：SecurityException"))
-        assertEquals("DingTalk launch entry not found", MailText.reason("找不到钉钉启动入口"))
+        assertEquals("Target app launch entry not found", MailText.reason("找不到钉钉启动入口"))
         assertEquals("See the in-app log for details", MailText.reason("某个未知原因"))
     }
 
